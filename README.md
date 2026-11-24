@@ -14,6 +14,18 @@ The macOS `.dmg` installer contains a standalone `QN Bench.app` signed with an A
 
 ---
 
+## Screenshots
+
+| Level 1: Wavelength Transduction & Filtering | Level 4: Entanglement Swapping (HOM) |
+| --- | --- |
+| ![Level 1: Wavelength Transduction](docs/images/level1-transduction.png) | ![Level 4: Entanglement Swapping](docs/images/level4-hom-swapping.png) |
+
+| Level 9: Entanglement Distillation | Level 11: Satellite Downlink (ATMOS) |
+| --- | --- |
+| ![Level 9: Entanglement Distillation](docs/images/level9-distillation.png) | ![Level 11: Satellite Downlink](docs/images/level11-satellite-ao.png) |
+
+---
+
 ## Running from Source
 
 ```bash

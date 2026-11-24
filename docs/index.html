@@ -375,6 +375,140 @@
       font-size: 0.92rem;
     }
 
+    .gallery {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: 1fr;
+    }
+
+    @container (min-width: 700px) {
+      .gallery {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .shot-card {
+      margin: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .shot-trigger {
+      display: block;
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: var(--bg-base);
+      cursor: zoom-in;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .shot-trigger img {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1140 / 670;
+      object-fit: cover;
+    }
+
+    .shot-trigger:hover {
+      opacity: 0.94;
+    }
+
+    .shot-caption {
+      padding: 0.9rem 1.05rem;
+    }
+
+    .shot-caption strong {
+      display: block;
+      font-size: 0.96rem;
+      color: var(--text-primary);
+      margin-bottom: 0.25rem;
+    }
+
+    .shot-caption span {
+      display: block;
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+    }
+
+    dialog.lightbox {
+      padding: 0;
+      border: 2px solid var(--border-strong);
+      border-radius: 14px;
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      width: min(1140px, 94dvw);
+      max-height: 92dvh;
+      overflow: auto;
+    }
+
+    dialog.lightbox:modal {
+      overscroll-behavior: contain;
+    }
+
+    dialog.lightbox::backdrop {
+      background: rgba(5, 8, 14, 0.82);
+      backdrop-filter: blur(4px);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    .lightbox-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .lightbox-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .lightbox-close {
+      padding: 0.4rem 0.85rem;
+      border-radius: 7px;
+      border: 1px solid var(--border-strong);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-size: 0.86rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .lightbox-close:hover {
+      border-color: var(--accent-cyan);
+    }
+
+    .lightbox-body {
+      padding: 0.75rem;
+      background: var(--bg-base);
+    }
+
+    .lightbox-body img {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1140 / 670;
+      border-radius: 6px;
+    }
+
+    .lightbox-desc {
+      margin: 0;
+      padding: 0.75rem 1.1rem 0.95rem;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
     footer {
       margin-top: 3.5rem;
       padding-top: 1.25rem;
@@ -388,7 +522,7 @@
     }
 
     @media (forced-colors: active) {
-      .download-card, .card, .badge, .nav-link, .btn-primary, .btn-secondary {
+      .download-card, .card, .badge, .nav-link, .btn-primary, .btn-secondary, .shot-card, dialog.lightbox, .lightbox-close {
         border: 2px solid ButtonText;
       }
       .btn-primary {
@@ -470,6 +604,51 @@
         </div>
       </section>
 
+      <section class="block" aria-labelledby="shots-heading">
+        <h2 id="shots-heading">Screenshots</h2>
+        <div class="gallery">
+          <figure class="shot-card">
+            <button type="button" class="shot-trigger" data-shot-src="images/level1-transduction.png" data-shot-title="Level 1 — The Wavelength Barrier" data-shot-desc="Converting a 780nm trapped-ion photon to 1550nm telecom C-band with a PPLN QFC, stripping Raman pump noise via a VBG Filter, and monitoring live Fidelity, Raman Noise, and SNSPD Spectrum Lock telemetry.">
+              <img src="images/level1-transduction.png" width="1140" height="670" alt="QN Bench Level 1 showing a 1550nm cyan photon exiting a telecom fiber after QFC conversion and VBG filtering, with live fidelity, Raman noise, and spectrum lock oscilloscopes.">
+            </button>
+            <figcaption class="shot-caption">
+              <strong>Level 1: Wavelength Transduction &amp; Filtering</strong>
+              <span>Shift 780nm photons to 1550nm via PPLN QFC, strip Raman noise with a VBG filter, and lock all three SNSPD criteria.</span>
+            </figcaption>
+          </figure>
+
+          <figure class="shot-card">
+            <button type="button" class="shot-trigger" data-shot-src="images/level4-hom-swapping.png" data-shot-title="Level 4 — Entanglement Swapping (HOM)" data-shot-desc="Equalizing asymmetric optical paths with a +100ps Delay Line so both 1550nm photons interfere within ±15ps at the 50:50 Bell-State Measurement beam splitter, locking the HOM coincidence dip at dt:0ps.">
+              <img src="images/level4-hom-swapping.png" width="1140" height="670" loading="lazy" alt="QN Bench Level 4 showing two synchronized photon paths converging on a 50:50 BSM beam splitter with the HOM Interference dip plot locked at 0ps.">
+            </button>
+            <figcaption class="shot-caption">
+              <strong>Level 4: Hong-Ou-Mandel Entanglement Swapping</strong>
+              <span>Balance asymmetric paths with a +100ps Delay Line to hit 0ps coincidence at the 50:50 BSM beam splitter.</span>
+            </figcaption>
+          </figure>
+
+          <figure class="shot-card">
+            <button type="button" class="shot-trigger" data-shot-src="images/level9-distillation.png" data-shot-title="Level 9 — Entanglement Distillation" data-shot-desc="Routing two 80% fidelity photons simultaneously into an Entanglement Distillation node to purify a single 95% fidelity photon that meets the fault-tolerant QPU >=90% threshold.">
+              <img src="images/level9-distillation.png" width="1140" height="670" loading="lazy" alt="QN Bench Level 9 showing an Entanglement Distillation node emitting a purified 95% green photon toward a fault-tolerant QPU target.">
+            </button>
+            <figcaption class="shot-caption">
+              <strong>Level 9: Entanglement Distillation for QPUs</strong>
+              <span>Purify two noisy 80% pairs into a single 95% photon to clear the fault-tolerant QPU ≥90% fidelity threshold.</span>
+            </figcaption>
+          </figure>
+
+          <figure class="shot-card">
+            <button type="button" class="shot-trigger" data-shot-src="images/level11-satellite-ao.png" data-shot-title="Level 11 — Satellite Downlink (ATMOS)" data-shot-desc="Using an Adaptive Optics deformable mirror upstream of a turbulent free-space ATMOS corridor to slash atmospheric attenuation from -25% to -5% per tile before coupling into ground-station fiber.">
+              <img src="images/level11-satellite-ao.png" width="1140" height="670" loading="lazy" alt="QN Bench Level 11 showing an Adaptive Optics mirror stabilizing a photon through three atmospheric turbulence tiles toward a ground-station fiber.">
+            </button>
+            <figcaption class="shot-caption">
+              <strong>Level 11: Satellite Downlink &amp; Adaptive Optics</strong>
+              <span>Lock wavefronts with Adaptive Optics before entering turbulent ATMOS tiles, then couple cleanly into ground fiber.</span>
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
       <section class="block" aria-labelledby="install-heading">
         <h2 id="install-heading">Installation &amp; Automatic Updates</h2>
         <div class="cards">
@@ -527,7 +706,51 @@
     </footer>
   </div>
 
+  <dialog id="shot-lightbox" class="lightbox" closedby="any" aria-labelledby="lightbox-title">
+    <div class="lightbox-bar">
+      <h1 id="lightbox-title" class="lightbox-title">Screenshot Preview</h1>
+      <form method="dialog">
+        <button type="submit" class="lightbox-close" autofocus>Close</button>
+      </form>
+    </div>
+    <div class="lightbox-body">
+      <img id="lightbox-img" src="" width="1140" height="670" alt="">
+    </div>
+    <p id="lightbox-desc" class="lightbox-desc"></p>
+  </dialog>
+
   <script>
+    (function setupLightbox() {
+      const dialog = document.getElementById("shot-lightbox");
+      const titleEl = document.getElementById("lightbox-title");
+      const imgEl = document.getElementById("lightbox-img");
+      const descEl = document.getElementById("lightbox-desc");
+
+      for (const btn of document.querySelectorAll(".shot-trigger")) {
+        btn.addEventListener("click", () => {
+          const thumb = btn.querySelector("img");
+          imgEl.src = btn.dataset.shotSrc || "";
+          imgEl.alt = thumb ? thumb.alt : "";
+          titleEl.textContent = btn.dataset.shotTitle || "Screenshot";
+          descEl.textContent = btn.dataset.shotDesc || "";
+          dialog.showModal();
+        });
+      }
+
+      // Fallback for browsers without native <dialog closedby="any"> (e.g. Safari)
+      if (!("closedBy" in HTMLDialogElement.prototype)) {
+        const outside = (e) => {
+          const r = dialog.getBoundingClientRect();
+          return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        };
+        let pressedOutside = false;
+        dialog.addEventListener("pointerdown", (e) => { pressedOutside = outside(e); });
+        dialog.addEventListener("pointerup", (e) => {
+          if (pressedOutside && outside(e)) dialog.close();
+        });
+      }
+    })();
+
     (async function loadLatestRelease() {
       const repo = "skcalanderson2/qn_bench";
       const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
