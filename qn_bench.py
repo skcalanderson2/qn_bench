@@ -4,7 +4,7 @@ import math
 import random
 from audio import SoundEngine
 from updater import UpdateManager
-from version import APP_VERSION
+from version import APP_NAME, APP_VERSION
 
 # --- Configuration ---
 TILE_SIZE = 80
@@ -611,7 +611,7 @@ class Game:
         pygame.mixer.pre_init(44100, -16, 1, 512)
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-        pygame.display.set_caption(f"1550nm v{APP_VERSION} — Quantum Networking Optical Bench")
+        pygame.display.set_caption(f"{APP_NAME} v{APP_VERSION} — Quantum Networking Optical Bench")
         self.clock = pygame.time.Clock()
         ui_font = "helveticaneue,arial,helvetica,avenirnext,dejavusans"
         mono_font = "menlo,sfmono,monaco,dejavusansmono,monospace"
@@ -1786,13 +1786,13 @@ class Game:
             self.screen.blit(tag, (card.x + 28, card.y + 20))
 
             if state == "AVAILABLE":
-                headline = f"1550nm v{info.get('version', '')} is Ready to Install"
+                headline = f"{APP_NAME} v{info.get('version', '')} is Ready to Install"
             elif state == "CHECKING":
                 headline = "Checking GitHub Releases..."
             elif state == "UP_TO_DATE":
-                headline = f"1550nm v{APP_VERSION} is Up to Date"
+                headline = f"{APP_NAME} v{APP_VERSION} is Up to Date"
             elif state == "DOWNLOADING":
-                headline = f"Downloading 1550nm v{info.get('version', '')}..."
+                headline = f"Downloading {APP_NAME} v{info.get('version', '')}..."
             elif state == "VERIFYING":
                 headline = "Verifying Signature & Checksum..."
             elif state == "INSTALLING":

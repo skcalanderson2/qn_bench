@@ -1,4 +1,4 @@
-"""In-app self-updater for 1550nm — Quantum Networking Optical Bench.
+"""In-app self-updater for QN Bench — Quantum Networking Optical Bench.
 
 Checks GitHub Releases in a background thread, prompts the user for explicit
 permission before downloading, verifies SHA-256 + Apple Developer ID signature,
@@ -23,6 +23,7 @@ from pathlib import Path
 
 from version import (
     APP_NAME,
+    APP_SLUG,
     APP_VERSION,
     ASSET_ZIP_NAME,
     RELEASES_API_URL,
@@ -73,7 +74,7 @@ def _http_request(url, timeout=15):
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": f"{APP_NAME}/{APP_VERSION}",
+            "User-Agent": f"{APP_SLUG}/{APP_VERSION}",
             "Accept": "application/vnd.github+json",
         },
     )
@@ -216,7 +217,7 @@ class UpdateManager:
             self.status_text = msg
 
     def _install_worker(self, info):
-        tmp_dir = Path(tempfile.mkdtemp(prefix="1550nm-update-"))
+        tmp_dir = Path(tempfile.mkdtemp(prefix="qn-bench-update-"))
         cleanup_tmp = True
         try:
             zip_name = info["zip_name"] or ASSET_ZIP_NAME

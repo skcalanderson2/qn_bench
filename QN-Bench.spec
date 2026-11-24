@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for building the standalone macOS 1550nm.app bundle."""
+"""PyInstaller spec for building the standalone macOS QN Bench.app bundle."""
 
 import sys
 sys.path.insert(0, SPECPATH)
@@ -66,7 +66,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name=f"{APP_NAME}.app",
-    icon="build/1550nm.icns",
+    icon="build/QN-Bench.icns",
     bundle_identifier=BUNDLE_ID,
     version=APP_VERSION,
     info_plist={

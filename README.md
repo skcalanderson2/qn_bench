@@ -1,4 +1,4 @@
-# 1550nm — Quantum Networking Optical Bench
+# QN Bench — Quantum Networking Optical Bench
 
 An educational 2D optical-bench puzzle game built in **Python + Pygame** that teaches the real physics and hardware stack of quantum networking — single-photon transduction (`780nm`/`637nm` → `1550nm`), Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, entanglement distillation, and adaptive optics satellite downlinks.
 
@@ -7,10 +7,10 @@ An educational 2D optical-bench puzzle game built in **Python + Pygame** that te
 * **Download Page:** https://skcalanderson2.github.io/qn_bench/
 * **GitHub Releases:** https://github.com/skcalanderson2/qn_bench/releases/latest
 
-The macOS `.dmg` installer contains a standalone `1550nm.app` signed with an Apple Developer ID certificate and notarized by Apple.
+The macOS `.dmg` installer contains a standalone `QN Bench.app` signed with an Apple Developer ID certificate and notarized by Apple.
 
 ### In-App Self-Updating
-`1550nm.app` automatically checks GitHub Releases in the background on startup (or manually via the sidebar version pill / `U` key). When a newer release is available, it displays the release notes and asks for your permission before downloading, verifying the SHA-256 digest and Apple Developer signature (`TeamIdentifier`), swapping the app bundle, and relaunching.
+`QN Bench.app` automatically checks GitHub Releases in the background on startup (or manually via the sidebar version pill / `U` key). When a newer release is available, it displays the release notes and asks for your permission before downloading, verifying the SHA-256 digest and Apple Developer signature (`TeamIdentifier`), swapping the app bundle, and relaunching.
 
 ---
 

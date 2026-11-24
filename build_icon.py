@@ -1,7 +1,7 @@
-"""Procedural macOS .icns icon generator for 1550nm.
+"""Procedural macOS .icns icon generator for QN Bench.
 
-Generates a 1024x1024 iconset using Pygame primitives (zero external assets)
-and compiles it to build/1550nm.icns via macOS iconutil.
+Generates a 1024x1024 multi-resolution Retina icon using Pygame primitives
+(zero external assets) and packs it directly into build/QN-Bench.icns.
 """
 
 import io
@@ -78,12 +78,12 @@ def render_master_icon(size=1024):
         pygame.draw.line(card_surf, (167, 139, 250), (px, crystal.y + 18), (px, crystal.bottom - 18), 6)
     pygame.draw.rect(card_surf, (216, 200, 255), crystal, 6, border_radius=26)
 
-    # Crisp 1550nm badge text at bottom
-    font_main = pygame.font.SysFont("helveticaneue,arial,dejavusans", 136, bold=True)
-    font_sub = pygame.font.SysFont("menlo,monaco,monospace", 38, bold=True)
-    t_main = font_main.render("1550nm", True, (238, 244, 252))
-    t_sub = font_sub.render("QUANTUM BENCH", True, (56, 189, 248))
-    card_surf.blit(t_main, (cx - t_main.get_width() // 2, card.bottom - 245))
+    # Crisp QN Bench badge text at bottom
+    font_main = pygame.font.SysFont("helveticaneue,arial,dejavusans", 124, bold=True)
+    font_sub = pygame.font.SysFont("menlo,monaco,monospace", 36, bold=True)
+    t_main = font_main.render("QN Bench", True, (238, 244, 252))
+    t_sub = font_sub.render("1550nm OPTICAL BENCH", True, (56, 189, 248))
+    card_surf.blit(t_main, (cx - t_main.get_width() // 2, card.bottom - 240))
     card_surf.blit(t_sub, (cx - t_sub.get_width() // 2, card.bottom - 95))
 
     # Mask card_surf to rounded rect cleanly
@@ -104,7 +104,7 @@ def _surface_to_png_bytes(surf):
     return buf.getvalue()
 
 
-def build_icns(output_path=Path("build/1550nm.icns")):
+def build_icns(output_path=Path("build/QN-Bench.icns")):
     """Pack multi-resolution Retina PNG chunks directly into a macOS .icns container."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

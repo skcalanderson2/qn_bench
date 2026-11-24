@@ -1,4 +1,4 @@
-"""Procedural lab audio synthesizer for 1550nm — Quantum Networking Optical Bench.
+"""Procedural lab audio synthesizer for QN Bench — Quantum Networking Optical Bench.
 
 Generates 100% procedural 16-bit PCM waveforms using only the Python standard
 library and plays them through pygame.mixer (with graceful silent fallback if

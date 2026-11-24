@@ -1,7 +1,7 @@
-# 1550nm — Quantum Networking Optical Bench
+# QN Bench — Quantum Networking Optical Bench
 
 ## Project Overview
-**1550nm** is an educational 2D optical-bench puzzle game built in **Python + Pygame**. The goal is to teach players both the conceptual physics and the physical hardware stack of quantum networking—specifically how single photons are generated, frequency-converted, filtered, buffered, routed, and measured.
+**QN Bench** is an educational 2D optical-bench puzzle game built in **Python + Pygame**. The goal is to teach players both the conceptual physics and the physical hardware stack of quantum networking—specifically how single photons are generated, frequency-converted, filtered, buffered, routed, and measured.
 
 * **Entry Point:** `qn_bench.py`
 * **Dependencies:** `pygame` (standard library `sys`, `math`, `random`)

@@ -13,7 +13,9 @@ cd "$SCRIPT_DIR"
 
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Al Anderson (MR38JF8F3H)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-qn-bench-notary}"
-APP_NAME="1550nm"
+APP_NAME="QN Bench"
+APP_SLUG="QN-Bench"
+SPEC_FILE="QN-Bench.spec"
 VENV_PY="${SCRIPT_DIR}/.venv/bin/python3"
 VENV_PYINSTALLER="${SCRIPT_DIR}/.venv/bin/pyinstaller"
 
@@ -70,14 +72,14 @@ fi
 VERSION="$("$VENV_PY" -c "import version; print(version.APP_VERSION)")"
 TAG="v${VERSION}"
 APP_PATH="dist/${APP_NAME}.app"
-ZIP_PATH="dist/${APP_NAME}-macos-arm64.zip"
-DMG_PATH="dist/${APP_NAME}-${VERSION}-macos-arm64.dmg"
+ZIP_PATH="dist/${APP_SLUG}-macos-arm64.zip"
+DMG_PATH="dist/${APP_SLUG}-${VERSION}-macos-arm64.dmg"
 SUMS_PATH="dist/SHA256SUMS.txt"
 
 echo "==> Building ${APP_NAME} ${TAG} (arm64)..."
 rm -rf build dist
 "$VENV_PY" build_icon.py
-PYINSTALLER_CONFIG_DIR="${SCRIPT_DIR}/build/pyi_cache" "$VENV_PYINSTALLER" --clean --noconfirm 1550nm.spec
+PYINSTALLER_CONFIG_DIR="${SCRIPT_DIR}/build/pyi_cache" "$VENV_PYINSTALLER" --clean --noconfirm "$SPEC_FILE"
 
 echo "==> Signing nested binaries inside ${APP_PATH} (inside-out)..."
 sign_item() {
@@ -174,19 +176,19 @@ fi
 
 echo "==> Publishing GitHub Release ${TAG}..."
 if [[ -z "$RELEASE_NOTES" ]]; then
-    RELEASE_NOTES="Signed & notarized macOS (Apple Silicon) release of **1550nm — Quantum Networking Optical Bench** (${TAG}).
+    RELEASE_NOTES="Signed & notarized macOS (Apple Silicon) release of **QN Bench — Quantum Networking Optical Bench** (${TAG}).
 
 ### Downloads
-- **macOS Installer (\`.dmg\`)**: Drag \`1550nm.app\` into your \`Applications\` folder.
+- **macOS Installer (\`.dmg\`)**: Drag \`QN Bench.app\` into your \`Applications\` folder.
 - **Auto-Update Archive (\`.zip\`)**: Used automatically by the in-app updater (verified via SHA-256 + Apple Developer ID signature)."
 fi
 
 if gh release view "$TAG" >/dev/null 2>&1; then
     gh release upload "$TAG" "$DMG_PATH" "$ZIP_PATH" "$SUMS_PATH" --clobber
-    gh release edit "$TAG" --title "1550nm ${TAG}" --notes "$RELEASE_NOTES"
+    gh release edit "$TAG" --title "${APP_NAME} ${TAG}" --notes "$RELEASE_NOTES"
 else
     gh release create "$TAG" "$DMG_PATH" "$ZIP_PATH" "$SUMS_PATH" \
-        --title "1550nm ${TAG}" \
+        --title "${APP_NAME} ${TAG}" \
         --notes "$RELEASE_NOTES"
 fi
 
