@@ -3,6 +3,7 @@ import sys
 import math
 import random
 from audio import SoundEngine
+from qkd_crypto import QKDSession
 from updater import UpdateManager
 from version import APP_NAME, APP_VERSION
 
@@ -179,6 +180,34 @@ HARDWARE_DOCS = {
         "rule": "Emits 637nm photon; QFC shifts 637nm -> 1550nm with +70 Raman noise (needs 2 VBGs).",
         "tip": "Give the NV arm two VBG Filters while the 780nm Ion arm only needs one.",
     },
+    "QKD_TX": {
+        "title": "BB84 QKD Transmitter & Polarizer (Alice)",
+        "color": ACCENT_RED,
+        "physics": "Encodes random bits (0/1) onto single photons using random polarization bases ('+' rectilinear or 'x' diagonal) for BB84 Quantum Key Distribution.",
+        "rule": "Fires a burst of 36 polarized qubits. Bob sifts matching bases and derives an AES-256 key if QBER <= 11%.",
+        "tip": "Uncompensated PMD rotates bases and spikes QBER to ~50% — align Bob's frame with an HWP.",
+    },
+    "EPR": {
+        "title": "Entangled Photon Pair Source (SPDC / EPR)",
+        "color": ACCENT_PURPLE,
+        "physics": "Spontaneous Parametric Down-Conversion crystal generating Bell-state |Phi+> entangled photon pairs sent simultaneously to Alice and Bob for E91/BBM92 QKD.",
+        "rule": "Emits 36 correlated pairs (Left -> Alice, Right -> Bob). Violates Bell CHSH inequality (S > 2.0) when untampered.",
+        "tip": "Both Alice's and Bob's arms must convert to 1550nm (QFC) and strip noise (VBG).",
+    },
+    "EVE": {
+        "title": "Eavesdropper Fiber Tap (Intercept-Resend)",
+        "color": ACCENT_RED,
+        "physics": "An adversary tapping optical fiber must measure each intercepted photon in a guessed basis ('+' or 'x'), irreversibly collapsing the quantum state (No-Cloning Theorem).",
+        "rule": "Injects ~25% QBER (> 11% threshold) and collapses Bell CHSH S <= 2.0, forcing QKD to abort key generation.",
+        "tip": "You cannot filter Eve out — detect the QBER spike and reroute around the tapped fiber using mirrors!",
+    },
+    "QKD_RX": {
+        "title": "Polarizing QKD Receiver & AES-256 Engine",
+        "color": ACCENT_GREEN,
+        "physics": "Measures arriving 1550nm photons in independent random '+'/'x' bases, sifts matching bases over a classical channel, checks QBER/CHSH, and runs SHA-256 privacy amplification.",
+        "rule": "Requires >= 12 sifted bits and QBER <= 11% (plus CHSH S > 2.0 for E91) to derive a live 256-bit AES-CTR key.",
+        "tip": "Press [K] or click INSPECT AES-256 to view the derived 256-bit key and encrypt custom messages!",
+    },
 }
 
 # --- Level Definitions ---
@@ -335,6 +364,53 @@ LEVELS = [
         "walls": [(3, 2), (4, 2), (5, 2), (6, 2), (3, 3), (3, 4), (3, 5)],
         "inventory": {"QFC": 1, "VBG": 1, "AO": 1, "MIRROR_BACK": 2},
     },
+    {
+        "title": "Level 12: BB84 QKD & AES-256",
+        "goal": "Distribute 36 polarized qubits to Bob (QBER <= 11%) to derive a live AES-256 encryption key.",
+        "briefing": "In BB84 Quantum Key Distribution, Alice fires single photons encoded in random '+' and 'x' bases. Bob measures in random bases, sifts matching rounds, and hashes the key into a real 256-bit AES key. Compensate the PMD fiber's polarization drift with an HWP so QBER stays below 11%!",
+        "new_hardware": ["QKD_TX", "QKD_RX"],
+        "mode": "QKD_BB84",
+        "qkd_rounds": 36,
+        "emitters": [(0, 2, RIGHT, 780)],
+        "target": (9, 2),
+        "fixed": {(3, 2): "PMD_FIBER", (4, 2): "FIBER", (5, 2): "FIBER"},
+        "walls": [],
+        "inventory": {"QFC": 1, "VBG": 1, "HWP": 1},
+    },
+    {
+        "title": "Level 13: Entangled QKD (E91)",
+        "goal": "Distribute EPR entangled pairs to Alice & Bob (CHSH S > 2.0, QBER <= 11%) for shared AES-256.",
+        "briefing": "Entanglement-based QKD (E91/BBM92) uses a central EPR source sending correlated Bell pairs to Alice and Bob simultaneously. Convert and filter BOTH arms into 1550nm and align Bob's PMD fiber with an HWP to verify Bell violation (S > 2.0) and derive identical AES-256 keys at both ends.",
+        "new_hardware": ["EPR"],
+        "mode": "QKD_E91",
+        "qkd_rounds": 36,
+        "epr_source": (4, 2),
+        "emitters": [(4, 2, LEFT, 780), (4, 2, RIGHT, 780)],
+        "target": (9, 2),
+        "targets": {"A": (0, 2), "B": (9, 2)},
+        "fixed": {(1, 2): "FIBER", (7, 2): "PMD_FIBER"},
+        "walls": [],
+        "inventory": {"QFC": 2, "VBG": 2, "HWP": 1},
+    },
+    {
+        "title": "Level 14: Eavesdropper & AES Link",
+        "goal": "Eve is tapping the upper fiber (QBER ~25%)! Reroute Bob's entangled beam via mirrors for AES-256.",
+        "briefing": "An eavesdropper (EVE) has spliced an intercept-resend tap onto Bob's direct fiber. Try firing straight through Eve to watch quantum physics catch her (QBER > 11%, CHSH S <= 2.0, key aborted!) — then route Bob's entangled beam around Eve through the lower dark fiber to lock an AES-256 channel.",
+        "new_hardware": ["EVE"],
+        "mode": "QKD_E91",
+        "qkd_rounds": 36,
+        "epr_source": (4, 2),
+        "emitters": [(4, 2, LEFT, 780), (4, 2, RIGHT, 780)],
+        "target": (9, 2),
+        "targets": {"A": (0, 2), "B": (9, 2)},
+        "fixed": {
+            (1, 2): "FIBER",
+            (7, 2): "EVE", (8, 2): "FIBER",
+            (7, 4): "FIBER", (8, 4): "FIBER",
+        },
+        "walls": [(7, 1), (8, 1), (7, 3), (8, 3)],
+        "inventory": {"QFC": 2, "VBG": 2, "MIRROR_SLASH": 1, "MIRROR_BACK": 2},
+    },
 ]
 
 
@@ -400,7 +476,22 @@ class Shockwave:
 
 
 class Photon:
-    def __init__(self, pid, gx, gy, direction, wavelength=780, fidelity=100, noise=0, pol="+"):
+    def __init__(
+        self,
+        pid,
+        gx,
+        gy,
+        direction,
+        wavelength=780,
+        fidelity=100,
+        noise=0,
+        pol="+",
+        speed=4.0,
+        qkd_pair_id=None,
+        qkd_role="B",
+        qkd_bit=0,
+        qkd_session=None,
+    ):
         self.pid = pid
         self.px = gx * TILE_SIZE + TILE_SIZE // 2
         self.py = gy * TILE_SIZE + TILE_SIZE // 2
@@ -409,6 +500,8 @@ class Photon:
         self.noise = noise
         self.fidelity = fidelity
         self.pol = pol
+        self.pmd_flips = 0
+        self.eve_tapped = False
         self.ao_locked = False
         self.alive = True
         self.arrived = False
@@ -416,7 +509,11 @@ class Photon:
         self.distill_tick = None
         self.distill_pos = None
         self.delay_timer = 0
-        self.speed = 4.0
+        self.speed = speed
+        self.qkd_pair_id = qkd_pair_id
+        self.qkd_role = qkd_role
+        self.qkd_bit = qkd_bit
+        self.qkd_session = qkd_session
         self.last_tile = (gx, gy)
         self.trail = []
         self.fid_history = [(0, fidelity, wavelength)]
@@ -452,6 +549,8 @@ class Photon:
         if not (0 <= self.px < GRID_COLS * TILE_SIZE and 0 <= self.py < GRID_ROWS * TILE_SIZE):
             self.alive = False
             self.record_telemetry(current_tick)
+            if self.qkd_session is not None:
+                self.qkd_session.record_drop()
             sfx_cb("fail")
             return f"FAILURE: Photon {self.pid} exited the optical bench."
 
@@ -469,25 +568,43 @@ class Photon:
         return None
 
     def interact(self, cx, cy, grid, target_pos, current_tick, fx_cb, sfx_cb, target_mode="SINGLE"):
+        is_qkd = target_mode in ("QKD_BB84", "QKD_E91")
         if (cx, cy) == target_pos:
             self.alive = False
             min_fid = 90 if target_mode == "QPU" else 60
             if self.wavelength != 1550:
-                fx_cb("burst", self.px, self.py, ACCENT_RED, 18)
+                fx_cb("burst", self.px, self.py, ACCENT_RED, 8 if is_qkd else 18)
                 sfx_cb("fail")
+                if self.qkd_session is not None:
+                    self.qkd_session.record_drop()
                 return f"FAILURE: Detector tuned for 1550nm, Photon {self.pid} arrived at {self.wavelength}nm!"
             if self.noise > 10:
-                fx_cb("burst", self.px, self.py, ACCENT_AMBER, 20)
+                fx_cb("burst", self.px, self.py, ACCENT_AMBER, 8 if is_qkd else 20)
                 sfx_cb("fail")
+                if self.qkd_session is not None:
+                    self.qkd_session.record_drop()
                 return f"FAILURE: Detector latched by Photon {self.pid} Raman noise ({self.noise})! Add VBG Filter."
             if self.fidelity < min_fid:
-                fx_cb("burst", self.px, self.py, ACCENT_RED, 18)
+                fx_cb("burst", self.px, self.py, ACCENT_RED, 8 if is_qkd else 18)
                 sfx_cb("fail")
+                if self.qkd_session is not None:
+                    self.qkd_session.record_drop()
                 hint = "Purify at DISTILL node." if target_mode == "QPU" else "Use Q-Memory or AO."
                 return f"FAILURE: Photon {self.pid} fidelity too low ({self.fidelity}% < {min_fid}%). {hint}"
             self.arrived = True
             self.arrival_tick = current_tick
-            fx_cb("ring", self.px, self.py, ACCENT_CYAN, 10)
+            if is_qkd and self.qkd_session is not None:
+                self.qkd_session.measure_photon(
+                    self.qkd_role,
+                    self.qkd_pair_id,
+                    self.pol,
+                    self.qkd_bit,
+                    pmd_flipped=(self.pmd_flips % 2 == 1),
+                    eve_tapped=self.eve_tapped,
+                )
+                fx_cb("spark", self.px, self.py, ACCENT_RED if self.eve_tapped else ACCENT_GREEN, 4)
+            else:
+                fx_cb("ring", self.px, self.py, ACCENT_CYAN, 10)
             return None
 
         tile = grid.get((cx, cy))
@@ -496,30 +613,52 @@ class Photon:
 
         if tile == "WALL":
             self.alive = False
-            fx_cb("burst", self.px, self.py, ACCENT_RED, 16)
+            fx_cb("burst", self.px, self.py, ACCENT_RED, 8 if is_qkd else 16)
             sfx_cb("fail")
+            if self.qkd_session is not None:
+                self.qkd_session.record_drop()
             return f"FAILURE: Photon {self.pid} collided with cryostat shielding."
 
         elif tile in ("FIBER", "LIT_FIBER", "PMD_FIBER"):
             if self.wavelength != 1550:
                 self.alive = False
-                fx_cb("burst", self.px, self.py, ACCENT_RED, 18)
+                fx_cb("burst", self.px, self.py, ACCENT_RED, 8 if is_qkd else 18)
                 sfx_cb("fail")
+                if self.qkd_session is not None:
+                    self.qkd_session.record_drop()
                 return f"FAILURE: {self.wavelength}nm Photon {self.pid} absorbed by telecom fiber! Insert PPLN QFC first."
             self.fidelity = max(0, self.fidelity - 10)
             if tile == "LIT_FIBER":
                 self.noise += 15
-                fx_cb("spark", self.px, self.py, ACCENT_AMBER, 5)
+                fx_cb("spark", self.px, self.py, ACCENT_AMBER, 3 if is_qkd else 5)
             elif tile == "PMD_FIBER":
                 self.pol = "x" if self.pol == "+" else "+"
-                fx_cb("spark", self.px, self.py, ACCENT_PURPLE, 6)
+                self.pmd_flips += 1
+                fx_cb("spark", self.px, self.py, ACCENT_PURPLE, 3 if is_qkd else 6)
             if self.fidelity <= 0:
                 self.alive = False
-                fx_cb("burst", self.px, self.py, ACCENT_CYAN, 14)
+                fx_cb("burst", self.px, self.py, ACCENT_CYAN, 8 if is_qkd else 14)
                 sfx_cb("fail")
+                if self.qkd_session is not None:
+                    self.qkd_session.record_drop()
                 return f"FAILURE: Photon {self.pid} decohered completely in fiber."
-            if tile == "PMD_FIBER":
+            if tile == "PMD_FIBER" and not is_qkd:
                 return f"PMD Fiber: Photon {self.pid} polarization drifted to '{self.pol}'."
+
+        elif tile == "EVE":
+            self.eve_tapped = True
+            if self.qkd_session is not None:
+                eb, ebit = self.qkd_session.eve_intercept(
+                    self.qkd_pair_id,
+                    self.pol,
+                    self.qkd_bit,
+                    pmd_flipped=(self.pmd_flips % 2 == 1),
+                )
+                self.pol = eb
+                self.qkd_bit = ebit
+            fx_cb("spark", self.px, self.py, ACCENT_RED, 6)
+            sfx_cb("eve")
+            return "ALERT: EVE intercepted & re-emitted photon (quantum state collapsed -> QBER spike)!"
 
         elif tile == "ATMOS":
             loss = 5 if self.ao_locked else 25
@@ -537,16 +676,18 @@ class Photon:
                 old_wl = self.wavelength
                 self.wavelength = 1550
                 self.noise += added_noise
-                fx_cb("ring", self.px, self.py, ACCENT_PURPLE, 14)
+                fx_cb("spark" if is_qkd else "ring", self.px, self.py, ACCENT_PURPLE, 4 if is_qkd else 14)
                 sfx_cb("qfc")
-                return f"QFC: Photon {self.pid} shifted {old_wl}nm -> 1550nm (+{added_noise} noise)."
+                if not is_qkd:
+                    return f"QFC: Photon {self.pid} shifted {old_wl}nm -> 1550nm (+{added_noise} noise)."
 
         elif tile == "VBG":
             if self.noise > 0:
                 self.noise = max(0, self.noise - 50)
-                fx_cb("burst", self.px, self.py, ACCENT_AMBER, 12)
+                fx_cb("spark" if is_qkd else "burst", self.px, self.py, ACCENT_AMBER, 4 if is_qkd else 12)
                 sfx_cb("vbg")
-                return f"VBG: Stripped Raman noise from Photon {self.pid} (now {self.noise})."
+                if not is_qkd:
+                    return f"VBG: Stripped Raman noise from Photon {self.pid} (now {self.noise})."
 
         elif tile == "MEMORY":
             self.fidelity = 100
@@ -562,9 +703,11 @@ class Photon:
 
         elif tile == "HWP":
             self.pol = "x" if self.pol == "+" else "+"
-            fx_cb("ring", self.px, self.py, ACCENT_AMBER, 10)
+            self.pmd_flips += 1
+            fx_cb("spark" if is_qkd else "ring", self.px, self.py, ACCENT_AMBER, 4 if is_qkd else 10)
             sfx_cb("hwp")
-            return f"HWP: Rotated Photon {self.pid} polarization to '{self.pol}'."
+            if not is_qkd:
+                return f"HWP: Rotated Photon {self.pid} polarization to '{self.pol}'."
 
         elif tile == "AO":
             self.ao_locked = True
@@ -642,9 +785,25 @@ class Game:
         self.tick = 0
         self.level_idx = 0
         self.update_btn_rects = {}
+        self.qkd_btn_rects = {}
+        self.qkd_session = None
+        self.qkd_burst_remaining = 0
+        self.qkd_burst_idx = 0
+        self.qkd_last_drop_msg = None
+        self.qkd_plaintext = "QUANTUM LINK SECURED BY 1550nm QKD"
         self.updater = UpdateManager()
         self.updater.check_for_updates(silent=True)
         self.load_level(0)
+
+    def is_qkd_level(self, lvl=None):
+        lvl = lvl or LEVELS[self.level_idx]
+        return lvl["mode"] in ("QKD_BB84", "QKD_E91")
+
+    def target_coords(self, lvl=None):
+        lvl = lvl or LEVELS[self.level_idx]
+        if "targets" in lvl:
+            return set(lvl["targets"].values())
+        return {lvl["target"]}
 
     def spawn_fx(self, kind, x, y, color, count=10):
         for _ in range(count):
@@ -676,6 +835,10 @@ class Game:
         self.hom_signed_ps = None
         self.pol_mismatch = False
         self.distill_fired = False
+        self.qkd_burst_remaining = 0
+        self.qkd_burst_idx = 0
+        self.qkd_last_drop_msg = None
+        self.qkd_session = QKDSession(lvl["mode"], plaintext=self.qkd_plaintext) if self.is_qkd_level(lvl) else None
         self.sim_state = "READY"
         self.status_msg = lvl["goal"]
         self.status_color = TEXT_WHITE
@@ -688,6 +851,55 @@ class Game:
         else:
             self.overlay = None
 
+    def spawn_qkd_round(self, lvl):
+        pair_id = self.qkd_burst_idx
+        self.qkd_burst_idx += 1
+        self.qkd_burst_remaining -= 1
+        basis, bit = self.qkd_session.prepare_round(pair_id)
+
+        if lvl["mode"] == "QKD_BB84":
+            ex, ey, edir, wl = unpack_emitter(lvl["emitters"][0])
+            self.photons.append(
+                Photon(
+                    f"Q{pair_id}",
+                    ex,
+                    ey,
+                    edir,
+                    wavelength=wl,
+                    pol=basis,
+                    speed=6.0,
+                    qkd_pair_id=pair_id,
+                    qkd_role="B",
+                    qkd_bit=bit,
+                    qkd_session=self.qkd_session,
+                )
+            )
+            if pair_id % 6 == 0:
+                self.spawn_fx("spark", ex * TILE_SIZE + 40, ey * TILE_SIZE + 40, ACCENT_RED, 4)
+        else:
+            # E91 / BBM92: emit entangled Bell pair |Phi+> simultaneously to Alice (role A) and Bob (role B)
+            for idx, e in enumerate(lvl["emitters"]):
+                ex, ey, edir, wl = unpack_emitter(e)
+                role = "A" if idx == 0 else "B"
+                self.photons.append(
+                    Photon(
+                        f"{role}{pair_id}",
+                        ex,
+                        ey,
+                        edir,
+                        wavelength=wl,
+                        pol=basis,
+                        speed=6.0,
+                        qkd_pair_id=pair_id,
+                        qkd_role=role,
+                        qkd_bit=bit,
+                        qkd_session=self.qkd_session,
+                    )
+                )
+            if pair_id % 6 == 0:
+                sx, sy = lvl["epr_source"]
+                self.spawn_fx("ring", sx * TILE_SIZE + 40, sy * TILE_SIZE + 40, ACCENT_PURPLE, 5)
+
     def fire_photons(self):
         lvl = LEVELS[self.level_idx]
         self.tick = 0
@@ -695,7 +907,23 @@ class Game:
         self.hom_signed_ps = None
         self.pol_mismatch = False
         self.distill_fired = False
+        self.qkd_last_drop_msg = None
         self.photons = []
+        if self.is_qkd_level(lvl):
+            self.qkd_session = QKDSession(lvl["mode"], plaintext=self.qkd_plaintext)
+            self.qkd_session.verdict = "RUNNING"
+            self.qkd_burst_remaining = lvl.get("qkd_rounds", 36)
+            self.qkd_burst_idx = 0
+            self.spawn_qkd_round(lvl)
+            self.sfx.play("fire")
+            self.sim_active = True
+            self.sim_state = "ACTIVE"
+            self.level_complete = False
+            proto = "BB84 polarized qubits" if lvl["mode"] == "QKD_BB84" else "E91 entangled Bell pairs"
+            self.status_msg = f"Streaming {lvl.get('qkd_rounds', 36)} {proto} for QKD sifting & AES-256..."
+            self.status_color = ACCENT_CYAN
+            return
+
         for i, e in enumerate(lvl["emitters"]):
             ex, ey, edir, wl = unpack_emitter(e)
             self.photons.append(Photon(chr(65 + i), ex, ey, edir, wavelength=wl))
@@ -712,7 +940,7 @@ class Game:
     def level_pill_rect(self, idx, b_y):
         s_x = GRID_COLS * TILE_SIZE
         n = len(LEVELS)
-        pill_w, gap = 21, 3
+        pill_w, gap = (18, 2) if n > 11 else (21, 3)
         total_w = n * pill_w + (n - 1) * gap
         start_x = (s_x - 166) - total_w
         return pygame.Rect(start_x + idx * (pill_w + gap), b_y + 10, pill_w, 22)
@@ -749,12 +977,33 @@ class Game:
             self.sfx.play("select")
             self.overlay = None
 
+    def handle_qkd_overlay_click(self, mx, my):
+        rects = self.qkd_btn_rects
+        if rects.get("reset_msg") and rects["reset_msg"].collidepoint(mx, my):
+            self.sfx.play("select")
+            self.qkd_plaintext = "QUANTUM LINK SECURED BY 1550nm QKD"
+            if self.qkd_session is not None:
+                self.qkd_session.plaintext = self.qkd_plaintext
+                self.qkd_session.re_encrypt()
+            return
+        if rects.get("close") and rects["close"].collidepoint(mx, my):
+            self.sfx.play("select")
+            self.overlay = None
+            return
+        card = rects.get("card")
+        if card and not card.collidepoint(mx, my):
+            self.sfx.play("select")
+            self.overlay = None
+
     def handle_click(self, pos, button):
         mx, my = pos
 
         if self.overlay is not None:
             if self.overlay[0] == "UPDATE":
                 self.handle_update_overlay_click(mx, my)
+                return
+            if self.overlay[0] == "QKD_AES":
+                self.handle_qkd_overlay_click(mx, my)
                 return
             self.overlay = None
             self.sfx.play("select")
@@ -817,9 +1066,14 @@ class Game:
                 self.load_level(self.level_idx + 1)
             return
 
-        # Bottom panel clickable level pills
+        # Bottom panel clickable level pills & QKD Inspect button
         b_y = GRID_ROWS * TILE_SIZE
         if my >= b_y:
+            insp_rect = self.qkd_btn_rects.get("inspect")
+            if self.is_qkd_level() and insp_rect and insp_rect.collidepoint(mx, my):
+                self.sfx.play("select")
+                self.overlay = ("QKD_AES", None)
+                return
             for i in range(len(LEVELS)):
                 pill = self.level_pill_rect(i, b_y)
                 if pill.collidepoint(mx, my):
@@ -832,7 +1086,7 @@ class Game:
             gx, gy = mx // TILE_SIZE, my // TILE_SIZE
             lvl = LEVELS[self.level_idx]
             emitter_coords = {(unpack_emitter(e)[0], unpack_emitter(e)[1]) for e in lvl["emitters"]}
-            if (gx, gy) in emitter_coords or (gx, gy) == lvl["target"]:
+            if (gx, gy) in emitter_coords or (gx, gy) in self.target_coords(lvl):
                 return
 
             if button == 1:
@@ -845,6 +1099,9 @@ class Game:
                     self.photons = []
                     self.sim_active = False
                     self.sim_state = "READY"
+                    self.qkd_burst_remaining = 0
+                    if self.qkd_session is not None:
+                        self.qkd_session.reset()
                     self.hom_delta_ps = None
                     self.hom_signed_ps = None
                     self.pol_mismatch = False
@@ -858,6 +1115,9 @@ class Game:
                     self.photons = []
                     self.sim_active = False
                     self.sim_state = "READY"
+                    self.qkd_burst_remaining = 0
+                    if self.qkd_session is not None:
+                        self.qkd_session.reset()
                     self.hom_delta_ps = None
                     self.hom_signed_ps = None
                     self.pol_mismatch = False
@@ -890,6 +1150,32 @@ class Game:
 
     def evaluate_simulation(self):
         lvl = LEVELS[self.level_idx]
+        if self.is_qkd_level(lvl):
+            if self.qkd_burst_remaining > 0 or any(p.alive for p in self.photons):
+                return
+            self.sim_active = False
+            ok, msg = self.qkd_session.finalize()
+            if ok:
+                self.status_msg = msg
+                self.status_color = ACCENT_GREEN
+                self.sim_state = "LOCKED"
+                self.level_complete = True
+                self.completed_levels.add(self.level_idx)
+                self.sfx.play("aes_lock")
+                for tx, ty in self.target_coords(lvl):
+                    self.spawn_fx("ring", tx * TILE_SIZE + 40, ty * TILE_SIZE + 40, ACCENT_GREEN, 20)
+            else:
+                if self.qkd_session.verdict == "ABORT_NO_KEY" and self.qkd_last_drop_msg:
+                    self.status_msg = self.qkd_last_drop_msg
+                else:
+                    self.status_msg = msg
+                self.status_color = ACCENT_RED
+                self.sim_state = "FAULT"
+                self.sfx.play("fail")
+                for tx, ty in self.target_coords(lvl):
+                    self.spawn_fx("burst", tx * TILE_SIZE + 40, ty * TILE_SIZE + 40, ACCENT_RED, 14)
+            return
+
         if any(p.alive for p in self.photons):
             return
 
@@ -1012,6 +1298,23 @@ class Game:
             lbl = self.font_tile.render("ATMOS", True, ACCENT_TEAL)
             tile_surf.blit(lbl, (cx - lbl.get_width() // 2, 55))
 
+        elif comp == "EVE":
+            # Eavesdropper fiber intercept-resend tap (menacing crimson splice + snooping eye)
+            pygame.draw.rect(tile_surf, (46, 18, 24), rect, border_radius=8)
+            pygame.draw.rect(tile_surf, ACCENT_RED, rect, 2, border_radius=8)
+            # Spliced fiber pass-through
+            pygame.draw.line(tile_surf, (120, 45, 58), (0, cy - 6), (TILE_SIZE, cy - 6), 3)
+            # Stylized eavesdropper eye
+            eye_top = [(cx - 18, cy - 6), (cx - 8, cy - 16), (cx, cy - 18), (cx + 8, cy - 16), (cx + 18, cy - 6)]
+            eye_bot = [(cx - 18, cy - 6), (cx - 8, cy + 4), (cx, cy + 6), (cx + 8, cy + 4), (cx + 18, cy - 6)]
+            pygame.draw.lines(tile_surf, ACCENT_RED, False, eye_top, 2)
+            pygame.draw.lines(tile_surf, ACCENT_RED, False, eye_bot, 2)
+            pulse = 5 + int(1.5 * math.sin(self.frame * 0.14))
+            pygame.draw.circle(tile_surf, ACCENT_AMBER, (cx, cy - 6), pulse)
+            pygame.draw.circle(tile_surf, (24, 10, 14), (cx, cy - 6), 2)
+            lbl = self.font_tile.render("EVE TAP", True, ACCENT_RED)
+            tile_surf.blit(lbl, (cx - lbl.get_width() // 2, 55))
+
         elif comp == "DISTILL":
             # Entanglement Distillation / Purification Node (2 -> 1 at 95%)
             pygame.draw.rect(tile_surf, (16, 44, 38), rect, border_radius=8)
@@ -1102,7 +1405,25 @@ class Game:
             tile_surf.set_alpha(alpha)
         surf.blit(tile_surf, (gx * TILE_SIZE, gy * TILE_SIZE))
 
-    def draw_emitter(self, gx, gy, label, direction=RIGHT, wavelength=780):
+    def draw_epr_source(self, gx, gy):
+        rect = pygame.Rect(gx * TILE_SIZE + 6, gy * TILE_SIZE + 6, TILE_SIZE - 12, TILE_SIZE - 12)
+        cx, cy = rect.centerx, rect.centery
+        pygame.draw.rect(self.screen, (34, 22, 56), rect, border_radius=8)
+        pygame.draw.rect(self.screen, ACCENT_PURPLE, rect, 2, border_radius=8)
+        self.screen.blit(self.glows["purple"], (cx - 26, cy - 30))
+        # Dual entangled emission chevrons (LEFT & RIGHT)
+        pygame.draw.polygon(self.screen, ACCENT_CYAN, [(cx - 28, cy - 4), (cx - 21, cy - 9), (cx - 21, cy + 1)])
+        pygame.draw.polygon(self.screen, ACCENT_CYAN, [(cx + 28, cy - 4), (cx + 21, cy - 9), (cx + 21, cy + 1)])
+        # BBO SPDC diamond crystal + pulsing Bell-state core
+        diamond = [(cx, cy - 20), (cx + 15, cy - 4), (cx, cy + 12), (cx - 15, cy - 4)]
+        pygame.draw.polygon(self.screen, (62, 42, 110), diamond)
+        pygame.draw.polygon(self.screen, (218, 198, 255), diamond, 2)
+        pulse = 4 + int(1.8 * math.sin(self.frame * 0.13))
+        pygame.draw.circle(self.screen, ACCENT_CYAN, (cx, cy - 4), pulse)
+        lbl = self.font_tile.render("EPR PAIR", True, ACCENT_PURPLE)
+        self.screen.blit(lbl, (cx - lbl.get_width() // 2, rect.bottom - 16))
+
+    def draw_emitter(self, gx, gy, label, direction=RIGHT, wavelength=780, is_qkd_tx=False):
         rect = pygame.Rect(gx * TILE_SIZE + 6, gy * TILE_SIZE + 6, TILE_SIZE - 12, TILE_SIZE - 12)
         cx, cy = rect.centerx, rect.centery
         is_nv = (wavelength == 637)
@@ -1124,7 +1445,7 @@ class Game:
         self.screen.blit(self.glows["orange" if is_nv else "red"], (cx - 26, cy - 28))
         pulse = 4 + int(1.5 * math.sin(self.frame * 0.12))
         pygame.draw.circle(self.screen, (255, 225, 195) if is_nv else (255, 210, 220), (cx, cy - 2), pulse)
-        tag = f"NV {label} 637" if is_nv else f"ION {label} 780"
+        tag = "QKD TX +" if is_qkd_tx else (f"NV {label} 637" if is_nv else f"ION {label} 780")
         lbl = self.font_tile.render(tag, True, accent)
         self.screen.blit(lbl, (cx - lbl.get_width() // 2, rect.bottom - 16))
 
@@ -1199,6 +1520,114 @@ class Game:
                 trimmed = trimmed[:-1]
             msg_surf = self.font_sm.render(trimmed + "...", True, self.status_color)
         self.screen.blit(msg_surf, (log_rect.x + 8, log_rect.centery - msg_surf.get_height() // 2))
+
+        # --- QKD Telemetry Mode (QBER/CHSH, Live Basis Sifting, AES-256 Key Lock) ---
+        if self.is_qkd_level(lvl) and self.qkd_session is not None:
+            qs = self.qkd_session
+            self.qkd_btn_rects = {}
+
+            # Pane 1: QBER & Bell CHSH Monitor
+            p1 = pygame.Rect(14, b_y + 76, 250, 102)
+            qber_pct = qs.qber * 100.0
+            if qs.sifted_alice:
+                if qs.chsh_s is not None:
+                    q_str = f"QBER:{qber_pct:.0f}%  S:{qs.chsh_s:.2f}"
+                else:
+                    q_str = f"QBER:{qber_pct:.1f}%"
+                q_col = ACCENT_GREEN if (qs.qber <= qs.QBER_THRESHOLD and (qs.chsh_s is None or qs.chsh_s > 2.0)) else ACCENT_RED
+            else:
+                q_str, q_col = ("E91 BELL" if lvl["mode"] == "QKD_E91" else "BB84 QBER"), TEXT_MUTED
+            self.draw_scope_frame(p1, "QBER / BELL CHSH", q_str, q_col)
+
+            qx1, qx2 = p1.x + 8, p1.right - 8
+            qy1, qy2 = p1.y + 24, p1.bottom - 8
+            qh = qy2 - qy1
+            qthresh_y = int(qy2 - (11.0 / 60.0) * qh)
+            self.draw_dashed_hline(qx1, qx2, qthresh_y, ACCENT_RED)
+            self.screen.blit(self.font_xs.render("MAX 11%", True, (210, 85, 105)), (qx1 + 2, qthresh_y - 13))
+
+            if len(qs.qber_history) >= 2:
+                max_n = max(12, qs.qber_history[-1][0])
+                pts = [
+                    (
+                        int(qx1 + (n_i / max_n) * (qx2 - qx1)),
+                        int(qy2 - (min(60.0, qp) / 60.0) * qh),
+                    )
+                    for n_i, qp in qs.qber_history
+                ]
+                line_col = ACCENT_GREEN if qs.qber <= qs.QBER_THRESHOLD else ACCENT_RED
+                pygame.draw.lines(self.screen, line_col, False, pts, 2)
+                pygame.draw.circle(self.screen, line_col, pts[-1], 3)
+
+            # Pane 2: Live Qubit Sifting Stream
+            p2 = pygame.Rect(274, b_y + 76, 244, 102)
+            s_str = f"{len(qs.sifted_alice)} SIFTED / {len(qs.rounds)} RX" if qs.rounds else "AWAITING QUBITS"
+            s_col = ACCENT_GREEN if len(qs.sifted_alice) >= qs.MIN_SIFTED_BITS else (ACCENT_CYAN if qs.rounds else TEXT_MUTED)
+            self.draw_scope_frame(p2, "BASIS SIFTING", s_str, s_col)
+
+            self.screen.blit(self.font_xs.render("A:", True, TEXT_MUTED), (p2.x + 8, p2.y + 27))
+            self.screen.blit(self.font_xs.render("B:", True, TEXT_MUTED), (p2.x + 8, p2.y + 46))
+            self.screen.blit(self.font_xs.render("KEY:", True, TEXT_MUTED), (p2.x + 8, p2.y + 68))
+
+            recent = qs.rounds[-9:]
+            col_x = p2.x + 38
+            for rd in recent:
+                c_rect = pygame.Rect(col_x, p2.y + 24, 20, 66)
+                if rd["match"]:
+                    bg_c = (48, 22, 28) if rd["error"] else (18, 46, 36)
+                    bd_c = ACCENT_RED if rd["error"] else ACCENT_GREEN
+                else:
+                    bg_c, bd_c = (16, 22, 32), (30, 38, 52)
+                pygame.draw.rect(self.screen, bg_c, c_rect, border_radius=3)
+                pygame.draw.rect(self.screen, bd_c, c_rect, 1, border_radius=3)
+                ab = self.font_xs.render(rd["a_basis"], True, ACCENT_CYAN if rd["a_basis"] == "+" else ACCENT_PURPLE)
+                bb = self.font_xs.render(rd["b_basis"], True, ACCENT_CYAN if rd["b_basis"] == "+" else ACCENT_PURPLE)
+                self.screen.blit(ab, (c_rect.centerx - ab.get_width() // 2, p2.y + 27))
+                self.screen.blit(bb, (c_rect.centerx - bb.get_width() // 2, p2.y + 46))
+                if rd["match"]:
+                    kv = "!" if rd["error"] else str(rd["b_bit"])
+                    kc = ACCENT_RED if rd["error"] else ACCENT_GREEN
+                    ks = self.font_xs.render(kv, True, kc)
+                    self.screen.blit(ks, (c_rect.centerx - ks.get_width() // 2, p2.y + 68))
+                col_x += 22
+
+            # Pane 3: AES-256 Key & Cipher Lock + Inspect Button
+            p3 = pygame.Rect(528, b_y + 76, 258, 102)
+            if qs.verdict == "SECURE":
+                a_str, a_col = "256-BIT LOCKED", ACCENT_GREEN
+            elif qs.verdict == "ABORT_EVE":
+                a_str, a_col = "ABORTED!", ACCENT_RED
+            elif qs.verdict == "RUNNING":
+                a_str, a_col = "DISTILLING...", ACCENT_AMBER
+            else:
+                a_str, a_col = "STANDBY", TEXT_MUTED
+            self.draw_scope_frame(p3, "AES-256 ENGINE", a_str, a_col)
+
+            if qs.alice_key:
+                kh = qs.alice_key.hex().upper()
+                k_line = f"KEY: {kh[:10]}...{kh[-8:]}"
+                self.screen.blit(self.font_mono.render(k_line, True, ACCENT_GREEN), (p3.x + 10, p3.y + 28))
+                ct_line = f"CTR: {qs.ciphertext_hex[:18]}..."
+                self.screen.blit(self.font_mono.render(ct_line, True, ACCENT_CYAN), (p3.x + 10, p3.y + 45))
+            elif qs.verdict == "ABORT_EVE":
+                self.screen.blit(self.font_xs.render("KEY DISCARDED — LINK COMPROMISED", True, ACCENT_RED), (p3.x + 10, p3.y + 30))
+                self.screen.blit(self.font_xs.render("Fix polarization drift or bypass EVE.", True, TEXT_MUTED), (p3.x + 10, p3.y + 46))
+            else:
+                self.screen.blit(self.font_xs.render("Fire photons to sift & derive", True, TEXT_MUTED), (p3.x + 10, p3.y + 30))
+                self.screen.blit(self.font_xs.render("a real FIPS-197 AES-256 key.", True, TEXT_MUTED), (p3.x + 10, p3.y + 46))
+
+            insp_btn = pygame.Rect(p3.x + 10, p3.bottom - 30, p3.w - 20, 22)
+            self.qkd_btn_rects["inspect"] = insp_btn
+            ihov = (self.overlay is None) and insp_btn.collidepoint(mx, my)
+            ib_bg = (22, 62, 48) if qs.verdict == "SECURE" else ((34, 48, 68) if ihov else (20, 28, 42))
+            if ihov and qs.verdict == "SECURE":
+                ib_bg = (30, 82, 62)
+            ib_bd = ACCENT_GREEN if qs.verdict == "SECURE" else (ACCENT_CYAN if ihov else GRID_LINE)
+            pygame.draw.rect(self.screen, ib_bg, insp_btn, border_radius=4)
+            pygame.draw.rect(self.screen, ib_bd, insp_btn, 1, border_radius=4)
+            itxt = self.font_xs.render("INSPECT QKD & AES-256  [K]", True, ACCENT_GREEN if qs.verdict == "SECURE" else TEXT_WHITE)
+            self.screen.blit(itxt, (insp_btn.centerx - itxt.get_width() // 2, insp_btn.centery - itxt.get_height() // 2))
+            return
 
         # --- Pane 1: Fidelity Oscilloscope Trace ---
         p1 = pygame.Rect(14, b_y + 76, 250, 102)
@@ -1388,14 +1817,27 @@ class Game:
                 self.screen.blit(t_s, (pr.centerx - t_s.get_width() // 2, pr.centery - t_s.get_height() // 2))
                 cx_pill += pw + 4
 
-    def draw_target(self, gx, gy, mode):
+    def draw_target(self, gx, gy, mode, label_override=None):
         rect = pygame.Rect(gx * TILE_SIZE + 6, gy * TILE_SIZE + 6, TILE_SIZE - 12, TILE_SIZE - 12)
         cx, cy = rect.centerx, rect.centery
-        border = ACCENT_GREEN if self.level_complete else (ACCENT_PURPLE if mode == "QPU" else ACCENT_CYAN)
-        pygame.draw.rect(self.screen, (24, 24, 48) if mode == "QPU" else (16, 38, 48), rect, border_radius=8)
+        is_qkd = mode in ("QKD_BB84", "QKD_E91")
+        border = ACCENT_GREEN if self.level_complete else (ACCENT_PURPLE if mode == "QPU" else (ACCENT_TEAL if is_qkd else ACCENT_CYAN))
+        bg = (24, 24, 48) if mode == "QPU" else ((14, 40, 38) if is_qkd else (16, 38, 48))
+        pygame.draw.rect(self.screen, bg, rect, border_radius=8)
         pygame.draw.rect(self.screen, border, rect, 2, border_radius=8)
 
-        if mode == "BSM":
+        if is_qkd:
+            # Polarizing Beam Splitter (PBS) + random '+ / x' basis analyzer
+            pbs = pygame.Rect(cx - 15, cy - 22, 30, 30)
+            pygame.draw.rect(self.screen, (24, 68, 66), pbs, border_radius=4)
+            pygame.draw.rect(self.screen, border, pbs, 2, border_radius=4)
+            pygame.draw.line(self.screen, (200, 255, 245), (pbs.centerx - 8, pbs.centery), (pbs.centerx + 8, pbs.centery), 2)
+            pygame.draw.line(self.screen, (200, 255, 245), (pbs.centerx, pbs.centery - 8), (pbs.centerx, pbs.centery + 8), 2)
+            pygame.draw.line(self.screen, ACCENT_PURPLE, (pbs.centerx - 6, pbs.centery - 6), (pbs.centerx + 6, pbs.centery + 6), 1)
+            pygame.draw.line(self.screen, ACCENT_PURPLE, (pbs.centerx - 6, pbs.centery + 6), (pbs.centerx + 6, pbs.centery - 6), 1)
+            lbl = self.font_tile.render(label_override or "BOB RX", True, border)
+            self.screen.blit(lbl, (cx - lbl.get_width() // 2, rect.bottom - 16))
+        elif mode == "BSM":
             # 50:50 Beam Splitter Prism Cube
             cube = pygame.Rect(cx - 16, cy - 22, 32, 32)
             pygame.draw.rect(self.screen, (35, 85, 115), cube)
@@ -1449,7 +1891,7 @@ class Game:
         if self.overlay is None and mx < GRID_COLS * TILE_SIZE and my < GRID_ROWS * TILE_SIZE:
             hgx, hgy = mx // TILE_SIZE, my // TILE_SIZE
             emitter_coords = {(unpack_emitter(e)[0], unpack_emitter(e)[1]) for e in lvl["emitters"]}
-            if (hgx, hgy) not in self.grid and (hgx, hgy) not in emitter_coords and (hgx, hgy) != lvl["target"]:
+            if (hgx, hgy) not in self.grid and (hgx, hgy) not in emitter_coords and (hgx, hgy) not in self.target_coords(lvl):
                 if self.selected and self.inventory.get(self.selected, 0) > 0:
                     self.draw_component(self.screen, hgx, hgy, self.selected, alpha=110)
                     tx, ty = hgx * TILE_SIZE, hgy * TILE_SIZE
@@ -1464,11 +1906,19 @@ class Game:
                     coord = self.font_xs.render(f"{hgx},{hgy}", True, (90, 130, 160))
                     self.screen.blit(coord, (tx + 6, ty + 5))
 
-        # 4. Emitters & Target
-        for i, e in enumerate(lvl["emitters"]):
-            ex, ey, edir, wl = unpack_emitter(e)
-            self.draw_emitter(ex, ey, chr(65 + i), edir, wl)
-        self.draw_target(*lvl["target"], lvl["mode"])
+        # 4. Emitters & Target(s)
+        if "epr_source" in lvl:
+            self.draw_epr_source(*lvl["epr_source"])
+        else:
+            for i, e in enumerate(lvl["emitters"]):
+                ex, ey, edir, wl = unpack_emitter(e)
+                self.draw_emitter(ex, ey, chr(65 + i), edir, wl, is_qkd_tx=(lvl["mode"] == "QKD_BB84"))
+
+        if "targets" in lvl:
+            self.draw_target(*lvl["targets"]["A"], lvl["mode"], label_override="ALICE RX")
+            self.draw_target(*lvl["targets"]["B"], lvl["mode"], label_override="BOB RX")
+        else:
+            self.draw_target(*lvl["target"], lvl["mode"], label_override=("BOB RX" if lvl["mode"] == "QKD_BB84" else None))
 
         # 5. Photons & Laser Trails
         for p in self.photons:
@@ -1889,6 +2339,107 @@ class Game:
                 t3 = self.font_md.render("CLOSE", True, TEXT_MUTED)
                 self.screen.blit(t3, (b_cls.centerx - t3.get_width() // 2, b_cls.centery - t3.get_height() // 2))
 
+        elif kind == "QKD_AES":
+            qs = self.qkd_session
+            card_w, card_h = 760, 520
+            card = pygame.Rect((SCREEN_W - card_w) // 2, (SCREEN_H - card_h) // 2, card_w, card_h)
+            self.qkd_btn_rects["card"] = card
+
+            accent = ACCENT_GREEN if (qs and qs.verdict == "SECURE") else (ACCENT_RED if (qs and qs.verdict == "ABORT_EVE") else ACCENT_CYAN)
+            pygame.draw.rect(self.screen, (16, 22, 34), card, border_radius=12)
+            pygame.draw.rect(self.screen, accent, card, 2, border_radius=12)
+
+            proto_name = "E91 / BBM92 ENTANGLED QKD" if (qs and qs.protocol == "QKD_E91") else "BB84 PREPARE-AND-MEASURE QKD"
+            self.screen.blit(self.font_xs.render(f"{proto_name}  •  FIPS-197 AES-256-CTR", True, accent), (card.x + 26, card.y + 18))
+            self.screen.blit(self.font_lg.render("Quantum Key Distribution & AES-256 Inspector", True, TEXT_WHITE), (card.x + 26, card.y + 38))
+            pygame.draw.line(self.screen, GRID_LINE, (card.x + 26, card.y + 66), (card.right - 26, card.y + 66), 1)
+
+            # Row 1: 4 Quantum Telemetry Stat Boxes
+            stats = [
+                ("QUBITS / PAIRS", f"{qs.total_emitted if qs else 0} sent / {len(qs.rounds) if qs else 0} rx", ACCENT_CYAN),
+                ("SIFTED BITS", f"{len(qs.sifted_alice) if qs else 0} bits (min {qs.MIN_SIFTED_BITS if qs else 12})", ACCENT_GREEN if (qs and len(qs.sifted_alice) >= qs.MIN_SIFTED_BITS) else TEXT_MUTED),
+                ("QBER (MAX 11%)", f"{(qs.qber * 100.0) if qs else 0.0:.1f}%", ACCENT_GREEN if (qs and qs.sifted_alice and qs.qber <= qs.QBER_THRESHOLD) else (ACCENT_RED if (qs and qs.sifted_alice) else TEXT_MUTED)),
+                ("BELL CHSH (S > 2)", f"S = {qs.chsh_s:.2f}" if (qs and qs.chsh_s is not None) else "BB84 (N/A)", ACCENT_GREEN if (qs and qs.chsh_s and qs.chsh_s > 2.0) else (ACCENT_RED if (qs and qs.chsh_s is not None) else TEXT_MUTED)),
+            ]
+            bw = (card_w - 52 - 24) // 4
+            for i, (st_lbl, st_val, st_c) in enumerate(stats):
+                br = pygame.Rect(card.x + 26 + i * (bw + 8), card.y + 78, bw, 46)
+                pygame.draw.rect(self.screen, (11, 16, 25), br, border_radius=6)
+                pygame.draw.rect(self.screen, (36, 48, 66), br, 1, border_radius=6)
+                self.screen.blit(self.font_xs.render(st_lbl, True, TEXT_MUTED), (br.x + 8, br.y + 6))
+                self.screen.blit(self.font_sm.render(st_val, True, st_c), (br.x + 8, br.y + 24))
+
+            # Row 2: Sifted Raw Bits + SHA-256 Privacy Amplification -> 256-bit AES Key
+            y = card.y + 138
+            self.screen.blit(self.font_xs.render("1. SIFTED RAW KEY BITS (MATCHING '+' / 'x' BASES)", True, ACCENT_AMBER), (card.x + 26, y))
+            y += 17
+            bit_box = pygame.Rect(card.x + 26, y, card_w - 52, 28)
+            pygame.draw.rect(self.screen, (11, 16, 25), bit_box, border_radius=5)
+            pygame.draw.rect(self.screen, (36, 48, 66), bit_box, 1, border_radius=5)
+            raw_bits = "".join(str(b) for b in (qs.sifted_alice if qs else []))
+            bit_txt = raw_bits[:78] if raw_bits else "(Fire laser to generate and sift qubits)"
+            self.screen.blit(self.font_mono.render(bit_txt, True, ACCENT_CYAN if raw_bits else TEXT_MUTED), (bit_box.x + 10, bit_box.y + 8))
+
+            y += 40
+            self.screen.blit(self.font_xs.render("2. PRIVACY AMPLIFICATION (SHA-256 -> 256-BIT AES KEY)", True, ACCENT_GREEN if (qs and qs.alice_key) else ACCENT_AMBER), (card.x + 26, y))
+            y += 17
+            key_box = pygame.Rect(card.x + 26, y, card_w - 52, 46)
+            pygame.draw.rect(self.screen, (11, 16, 25), key_box, border_radius=5)
+            pygame.draw.rect(self.screen, ACCENT_GREEN if (qs and qs.alice_key) else (ACCENT_RED if (qs and qs.verdict == "ABORT_EVE") else (36, 48, 66)), key_box, 1, border_radius=5)
+            if qs and qs.alice_key and qs.bob_key:
+                ka = qs.alice_key.hex().upper()
+                kb = qs.bob_key.hex().upper()
+                self.screen.blit(self.font_mono.render(f"ALICE: {ka}", True, ACCENT_GREEN), (key_box.x + 10, key_box.y + 8))
+                self.screen.blit(self.font_mono.render(f"BOB:   {kb}", True, ACCENT_GREEN if ka == kb else ACCENT_RED), (key_box.x + 10, key_box.y + 25))
+            elif qs and qs.verdict == "ABORT_EVE":
+                self.screen.blit(self.font_sm.render("KEY ABORTED: Quantum security threshold violated (QBER > 11% or CHSH S <= 2.0).", True, ACCENT_RED), (key_box.x + 10, key_box.y + 14))
+            else:
+                self.screen.blit(self.font_sm.render("No AES-256 key derived yet. Solve the optical link and fire photons first.", True, TEXT_MUTED), (key_box.x + 10, key_box.y + 14))
+
+            # Row 3: Live AES-256-CTR Encryption & Decryption (Type to edit!)
+            y += 58
+            self.screen.blit(self.font_xs.render("3. ALICE PLAINTEXT  (TYPE ON KEYBOARD TO ENCRYPT LIVE WITH AES-256-CTR)", True, ACCENT_CYAN), (card.x + 26, y))
+            y += 17
+            pt_box = pygame.Rect(card.x + 26, y, card_w - 52, 32)
+            pygame.draw.rect(self.screen, (20, 30, 46), pt_box, border_radius=5)
+            pygame.draw.rect(self.screen, ACCENT_CYAN, pt_box, 1, border_radius=5)
+            caret = "_" if (self.frame // 25) % 2 == 0 else ""
+            self.screen.blit(self.font_mono.render(self.qkd_plaintext + caret, True, TEXT_WHITE), (pt_box.x + 10, pt_box.y + 9))
+
+            y += 42
+            self.screen.blit(self.font_xs.render("4. CLASSICAL CHANNEL CIPHERTEXT (AES-256-CTR HEX)", True, ACCENT_PURPLE), (card.x + 26, y))
+            y += 17
+            ct_box = pygame.Rect(card.x + 26, y, card_w - 52, 32)
+            pygame.draw.rect(self.screen, (11, 16, 25), ct_box, border_radius=5)
+            pygame.draw.rect(self.screen, (48, 40, 74), ct_box, 1, border_radius=5)
+            ct_disp = (qs.ciphertext_hex[:74] + ("..." if len(qs.ciphertext_hex) > 74 else "")) if (qs and qs.ciphertext_hex) else "(Locked until QKD establishes a secure 256-bit key)"
+            self.screen.blit(self.font_mono.render(ct_disp, True, ACCENT_PURPLE if (qs and qs.ciphertext_hex) else TEXT_MUTED), (ct_box.x + 10, ct_box.y + 9))
+
+            y += 42
+            self.screen.blit(self.font_xs.render("5. BOB DECRYPTED MESSAGE (USING BOB'S INDEPENDENTLY DERIVED AES-256 KEY)", True, ACCENT_GREEN), (card.x + 26, y))
+            y += 17
+            dec_box = pygame.Rect(card.x + 26, y, card_w - 52, 32)
+            pygame.draw.rect(self.screen, (11, 16, 25), dec_box, border_radius=5)
+            pygame.draw.rect(self.screen, ACCENT_GREEN if (qs and qs.decrypted_text) else (36, 48, 66), dec_box, 1, border_radius=5)
+            dec_disp = qs.decrypted_text if (qs and qs.decrypted_text) else "(Waiting for valid AES-256 key at Bob RX)"
+            self.screen.blit(self.font_mono.render(dec_disp, True, ACCENT_GREEN if (qs and qs.decrypted_text) else TEXT_MUTED), (dec_box.x + 10, dec_box.y + 9))
+
+            # Bottom buttons
+            btn_y = card.bottom - 50
+            b_rst = pygame.Rect(card.x + 26, btn_y, 175, 34)
+            b_cls = pygame.Rect(card.right - 166, btn_y, 140, 34)
+            self.qkd_btn_rects["reset_msg"] = b_rst
+            self.qkd_btn_rects["close"] = b_cls
+            pygame.draw.rect(self.screen, (38, 52, 74) if b_rst.collidepoint(mx, my) else PANEL_BG, b_rst, border_radius=6)
+            pygame.draw.rect(self.screen, GRID_LINE, b_rst, 1, border_radius=6)
+            tr = self.font_sm.render("RESET MESSAGE", True, TEXT_WHITE)
+            self.screen.blit(tr, (b_rst.centerx - tr.get_width() // 2, b_rst.centery - tr.get_height() // 2))
+
+            pygame.draw.rect(self.screen, (46, 62, 86) if b_cls.collidepoint(mx, my) else PANEL_BG, b_cls, border_radius=6)
+            pygame.draw.rect(self.screen, accent, b_cls, 1, border_radius=6)
+            tc = self.font_sm.render("CLOSE  [ESC]", True, TEXT_WHITE)
+            self.screen.blit(tc, (b_cls.centerx - tc.get_width() // 2, b_cls.centery - tc.get_height() // 2))
+
     def run(self):
         while True:
             self.frame += 1
@@ -1900,6 +2451,21 @@ class Game:
                     self.handle_click(event.pos, event.button)
                 elif event.type == pygame.KEYDOWN:
                     if self.overlay is not None:
+                        if self.overlay[0] == "QKD_AES":
+                            if event.key == pygame.K_ESCAPE:
+                                self.overlay = None
+                                self.sfx.play("select")
+                            elif event.key == pygame.K_BACKSPACE:
+                                self.qkd_plaintext = self.qkd_plaintext[:-1]
+                                if self.qkd_session is not None:
+                                    self.qkd_session.plaintext = self.qkd_plaintext
+                                    self.qkd_session.re_encrypt()
+                            elif event.unicode and event.unicode.isprintable() and len(self.qkd_plaintext) < 56:
+                                self.qkd_plaintext += event.unicode
+                                if self.qkd_session is not None:
+                                    self.qkd_session.plaintext = self.qkd_plaintext
+                                    self.qkd_session.re_encrypt()
+                            continue
                         if self.overlay[0] == "UPDATE":
                             st = self.updater.snapshot()["state"]
                             if event.key == pygame.K_ESCAPE and st not in ("DOWNLOADING", "VERIFYING", "INSTALLING"):
@@ -1918,6 +2484,9 @@ class Game:
                     elif event.key == pygame.K_h:
                         self.overlay = ("LEVEL", self.level_idx)
                         self.sfx.play("select")
+                    elif event.key == pygame.K_k and self.is_qkd_level():
+                        self.sfx.play("select")
+                        self.overlay = ("QKD_AES", None)
                     elif event.key == pygame.K_u:
                         self.sfx.play("select")
                         self.updater.mark_seen()
@@ -1949,19 +2518,39 @@ class Game:
             if self.sim_active:
                 self.tick += 1
                 lvl = LEVELS[self.level_idx]
+                is_qkd = self.is_qkd_level(lvl)
+                if is_qkd and self.qkd_burst_remaining > 0 and self.tick % 4 == 0:
+                    self.spawn_qkd_round(lvl)
                 for p in list(self.photons):
                     if p.alive:
+                        p_target = lvl["targets"][p.qkd_role] if "targets" in lvl else lvl["target"]
+                        if is_qkd:
+                            def _qkd_sfx(name, pid=p.qkd_pair_id):
+                                if pid is not None and (pid < 2 or (name == "eve" and pid % 8 == 0)):
+                                    self.sfx.play(name)
+                            sfx_fn = _qkd_sfx
+                        else:
+                            sfx_fn = self.sfx.play
                         msg = p.update(
                             self.grid,
-                            lvl["target"],
+                            p_target,
                             self.tick,
                             self.spawn_fx,
-                            self.sfx.play,
+                            sfx_fn,
                             lvl["mode"],
                         )
                         if msg:
-                            self.status_msg = msg
-                            self.status_color = ACCENT_RED if msg.startswith("FAILURE") else ACCENT_AMBER
+                            if is_qkd:
+                                if msg.startswith("FAILURE") and self.qkd_last_drop_msg is None:
+                                    self.qkd_last_drop_msg = msg
+                                if msg.startswith("ALERT"):
+                                    self.status_msg = msg
+                                    self.status_color = ACCENT_RED
+                            else:
+                                self.status_msg = msg
+                                self.status_color = ACCENT_RED if msg.startswith("FAILURE") else ACCENT_AMBER
+                if is_qkd and len(self.photons) > 24:
+                    self.photons = [p for p in self.photons if p.alive]
                 self.process_distillation()
                 self.evaluate_simulation()
 

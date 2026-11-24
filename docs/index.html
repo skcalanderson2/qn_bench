@@ -593,8 +593,8 @@
             <div class="badges" aria-label="Release assurances">
               <span class="badge">✓ macOS Signed &amp; Apple Notarized</span>
               <span class="badge">✓ Windows 10/11 (x64) Installer &amp; Portable ZIP</span>
-              <span class="badge">✓ Opt-in In-App Self-Updater</span>
-              <span class="badge">✓ 11 Physics Levels • Zero External Assets</span>
+              <span class="badge">✓ Live BB84/E91 QKD &amp; FIPS-197 AES-256</span>
+              <span class="badge">✓ 14 Physics Levels • Opt-in Self-Updater</span>
             </div>
           </div>
 
@@ -679,6 +679,26 @@
               <span>Lock wavefronts with Adaptive Optics before entering turbulent ATMOS tiles, then couple cleanly into ground fiber.</span>
             </figcaption>
           </figure>
+
+          <figure class="shot-card">
+            <button type="button" class="shot-trigger" data-shot-src="images/level14-qkd-aes.png" data-shot-title="Level 14 — Entangled QKD &amp; Eavesdropper Bypass" data-shot-desc="A central EPR source distributes entangled Bell pairs to Alice and Bob simultaneously. Routing Bob's beam around the crimson EVE tap preserves QBER = 0% and Bell CHSH S = 2.83 while live basis sifting distills raw key bits.">
+              <img src="images/level14-qkd-aes.png" width="1140" height="670" loading="lazy" alt="QN Bench Level 14 showing an EPR entangled pair source streaming polarized photons to Alice and bypassing an Eve fiber tap to reach Bob, with live QBER, Bell CHSH, and basis sifting telemetry.">
+            </button>
+            <figcaption class="shot-caption">
+              <strong>Level 14: Entangled E91 QKD &amp; Eve Detection</strong>
+              <span>Stream entangled Bell pairs to Alice &amp; Bob, detect Eve's QBER spike, and bypass the tapped fiber to lock CHSH S &gt; 2.0.</span>
+            </figcaption>
+          </figure>
+
+          <figure class="shot-card">
+            <button type="button" class="shot-trigger" data-shot-src="images/qkd-aes-inspector.png" data-shot-title="QKD &amp; FIPS-197 AES-256 Inspector" data-shot-desc="Inspect sifted raw bits, SHA-256 privacy amplification into identical 256-bit AES keys for Alice and Bob, and type custom messages to watch live AES-256-CTR encryption and decryption across the classical channel.">
+              <img src="images/qkd-aes-inspector.png" width="1140" height="670" loading="lazy" alt="QN Bench QKD and AES-256 Inspector modal displaying sifted bits, derived 256-bit hexadecimal AES keys for Alice and Bob, editable plaintext, AES-256-CTR ciphertext, and Bob's decrypted message.">
+            </button>
+            <figcaption class="shot-caption">
+              <strong>Live FIPS-197 AES-256 Cryptography Inspector</strong>
+              <span>Derive real 256-bit AES keys from sifted photons and type custom messages to encrypt and decrypt live at Bob's receiver.</span>
+            </figcaption>
+          </figure>
         </div>
       </section>
 
@@ -716,8 +736,8 @@
       </section>
 
       <section class="block" aria-labelledby="physics-heading">
-        <h2 id="physics-heading">11 Quantum Networking Hardware Challenges</h2>
-        <div class="cards three">
+        <h2 id="physics-heading">14 Quantum Networking &amp; QKD Hardware Challenges</h2>
+        <div class="cards">
           <article class="card">
             <span class="tag">LEVELS 1–3</span>
             <h3>Transduction &amp; Long-Haul</h3>
@@ -732,6 +752,11 @@
             <span class="tag">LEVELS 9–11</span>
             <h3>Distillation, Hybrid &amp; Satellites</h3>
             <p>Purify noisy pairs to 95% for fault-tolerant QPUs, bridge 637nm Diamond NV and 780nm Ion nodes, and lock wavefronts with Adaptive Optics through atmospheric turbulence.</p>
+          </article>
+          <article class="card">
+            <span class="tag">LEVELS 12–14</span>
+            <h3>BB84 / E91 QKD &amp; Live AES-256</h3>
+            <p>Stream polarized qubits and EPR entangled Bell pairs to Alice &amp; Bob, detect Eve fiber taps via QBER &amp; Bell CHSH violation, and distill real FIPS-197 AES-256 keys to encrypt and decrypt live messages.</p>
           </article>
         </div>
       </section>

@@ -55,6 +55,9 @@ Preserve these physical constraints when adding levels or components:
   * **Level 9 (Entanglement Distillation):** Introduces `DISTILL` (fusing two simultaneous `>=60%` photons into one `95%` photon) to satisfy the strict `QPU >=90%` detector.
   * **Level 10 (Hybrid Quantum Network):** Connects a `780nm` Trapped-Ion emitter and a `637nm` Diamond NV emitter (`+70` QFC noise requiring 2 `VBG`s) into `1550nm` at the `BSM 50:50`.
   * **Level 11 (Satellite Downlink / ATMOS):** Introduces turbulent `ATMOS` free-space tiles (`-25%` loss) stabilized by `AO` (`-5%` loss) before coupling into ground-station fiber.
+  * **Level 12 (BB84 QKD & AES-256):** Introduces prepare-and-measure BB84 QKD (`QKD TX` → `BOB RX`), requiring `QFC`, `VBG`, and `HWP` (to fix `PMD_FIBER` polarization basis drift) so `QBER <= 11%` and a real FIPS-197 AES-256 key is derived.
+  * **Level 13 (Entangled QKD / E91):** Introduces a central `EPR` entangled Bell-pair source distributing pairs simultaneously to `ALICE RX` and `BOB RX`, verifying Bell violation (`CHSH S > 2.0`) and identical AES-256 key derivation on both ends.
+  * **Level 14 (Eavesdropper & AES Link):** Introduces an `EVE` intercept-resend fiber tap (`QBER ~25%`, `CHSH S <= 2.0`, key aborted) requiring players to bypass Eve via 45° mirrors to establish a secure AES-256 channel.
 * **Graphics, Audio & UX:**
   * Machined optical breadboard grid with mounting holes and hover precision reticle (`gx,gy`).
   * Custom schematic renderers for all hardware components, including emitter direction chevrons.

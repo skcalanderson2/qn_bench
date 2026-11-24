@@ -25,6 +25,10 @@ An educational 2D optical-bench puzzle game built in **Python + Pygame** that te
 | --- | --- |
 | ![Level 9: Entanglement Distillation](docs/images/level9-distillation.png) | ![Level 11: Satellite Downlink](docs/images/level11-satellite-ao.png) |
 
+| Level 14: Entangled E91 QKD & Eve Detection | Live FIPS-197 AES-256 Cryptography Inspector |
+| --- | --- |
+| ![Level 14: Entangled E91 QKD](docs/images/level14-qkd-aes.png) | ![QKD and AES-256 Inspector](docs/images/qkd-aes-inspector.png) |
+
 ---
 
 ## Running from Source
@@ -41,6 +45,7 @@ python3 -m venv .venv
 * **SPACE** — Fire single photon(s)
 * **R** — Reset current level
 * **H** — Open Experiment Briefing overlay
+* **K** — Open QKD & AES-256 Inspector (on Levels 12–14)
 * **U** — Check for software updates
 * **M** — Mute / unmute procedural lab audio
 * **1–9, 0, -, [ / ]** — Switch levels

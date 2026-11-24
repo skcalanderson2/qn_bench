@@ -194,6 +194,24 @@ class SoundEngine:
             env = _envelope(t, d, 0.005, 0.06) * math.exp(-t * 16.0)
             return env * (0.6 * math.sin(math.tau * 880 * t) + 0.4 * math.sin(math.tau * 1320 * t))
 
+        # 16. Eve eavesdropper tap glitch chirp
+        def s_eve(t, d):
+            env = _envelope(t, d, 0.004, 0.04) * math.exp(-t * 18.0)
+            f = 220 + 95 * math.sin(math.tau * 45 * t)
+            return env * (0.65 * math.sin(math.tau * f * t) + 0.35 * math.sin(math.tau * f * 2.5 * t))
+
+        # 17. QKD + AES-256 cryptographic key lock chord
+        def s_aes_lock(t, d):
+            env = _envelope(t, d, 0.01, 0.22) * math.exp(-t * 3.2)
+            p = min(1.0, t / 0.12)
+            chord = (
+                0.32 * math.sin(math.tau * 440.0 * t)
+                + 0.26 * math.sin(math.tau * 554.37 * t)
+                + 0.24 * math.sin(math.tau * 659.25 * t)
+                + 0.18 * math.sin(math.tau * 880.0 * t) * p
+            )
+            return env * chord
+
         self.sounds = {
             "place": self._make(0.055, s_place, 0.28),
             "remove": self._make(0.060, s_remove, 0.24),
@@ -210,4 +228,6 @@ class SoundEngine:
             "hwp": self._make(0.095, s_hwp, 0.22),
             "distill": self._make(0.320, s_distill, 0.28),
             "ao": self._make(0.140, s_ao, 0.22),
+            "eve": self._make(0.110, s_eve, 0.24),
+            "aes_lock": self._make(0.520, s_aes_lock, 0.30),
         }
