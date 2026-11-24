@@ -2,7 +2,7 @@
 
 APP_NAME = "QN Bench"
 APP_SLUG = "QN-Bench"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 BUNDLE_ID = "com.alanderson.qn-bench"
 GITHUB_REPO = "skcalanderson2/qn_bench"
 TEAM_ID = "MR38JF8F3H"

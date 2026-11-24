@@ -613,8 +613,8 @@ class Game:
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         pygame.display.set_caption(f"{APP_NAME} v{APP_VERSION} — Quantum Networking Optical Bench")
         self.clock = pygame.time.Clock()
-        ui_font = "helveticaneue,arial,helvetica,avenirnext,dejavusans"
-        mono_font = "menlo,sfmono,monaco,dejavusansmono,monospace"
+        ui_font = "arial,dejavusans,helvetica"
+        mono_font = "couriernew,menlo,dejavusansmono,monospace"
         self.font_tile = pygame.font.SysFont(ui_font, 10, bold=True)
         self.font_xs = pygame.font.SysFont(ui_font, 11, bold=True)
         self.font_sm = pygame.font.SysFont(ui_font, 13)

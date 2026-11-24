@@ -79,8 +79,8 @@ def render_master_icon(size=1024):
     pygame.draw.rect(card_surf, (216, 200, 255), crystal, 6, border_radius=26)
 
     # Crisp QN Bench badge text at bottom
-    font_main = pygame.font.SysFont("helveticaneue,arial,dejavusans", 124, bold=True)
-    font_sub = pygame.font.SysFont("menlo,monaco,monospace", 36, bold=True)
+    font_main = pygame.font.SysFont("arial,dejavusans", 124, bold=True)
+    font_sub = pygame.font.SysFont("couriernew,menlo,monospace", 36, bold=True)
     t_main = font_main.render("QN Bench", True, (238, 244, 252))
     t_sub = font_sub.render("1550nm OPTICAL BENCH", True, (56, 189, 248))
     card_surf.blit(t_main, (cx - t_main.get_width() // 2, card.bottom - 240))
