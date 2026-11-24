@@ -3,6 +3,8 @@ import sys
 import math
 import random
 from audio import SoundEngine
+from updater import UpdateManager
+from version import APP_VERSION
 
 # --- Configuration ---
 TILE_SIZE = 80
@@ -609,7 +611,7 @@ class Game:
         pygame.mixer.pre_init(44100, -16, 1, 512)
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-        pygame.display.set_caption("1550nm — Quantum Networking Optical Bench")
+        pygame.display.set_caption(f"1550nm v{APP_VERSION} — Quantum Networking Optical Bench")
         self.clock = pygame.time.Clock()
         ui_font = "helveticaneue,arial,helvetica,avenirnext,dejavusans"
         mono_font = "menlo,sfmono,monaco,dejavusansmono,monospace"
@@ -639,6 +641,9 @@ class Game:
         self.frame = 0
         self.tick = 0
         self.level_idx = 0
+        self.update_btn_rects = {}
+        self.updater = UpdateManager()
+        self.updater.check_for_updates(silent=True)
         self.load_level(0)
 
     def spawn_fx(self, kind, x, y, color, count=10):
@@ -712,10 +717,45 @@ class Game:
         start_x = (s_x - 166) - total_w
         return pygame.Rect(start_x + idx * (pill_w + gap), b_y + 10, pill_w, 22)
 
+    def handle_update_overlay_click(self, mx, my):
+        snap = self.updater.snapshot()
+        state = snap["state"]
+        rects = self.update_btn_rects
+
+        if rects.get("install") and rects["install"].collidepoint(mx, my):
+            self.sfx.play("select")
+            self.updater.start_install()
+            return
+        if rects.get("open_page") and rects["open_page"].collidepoint(mx, my):
+            self.sfx.play("select")
+            self.updater.open_release_page()
+            return
+        if rects.get("recheck") and rects["recheck"].collidepoint(mx, my):
+            self.sfx.play("select")
+            self.updater.check_for_updates(silent=False)
+            return
+        if rects.get("cancel") and rects["cancel"].collidepoint(mx, my):
+            self.sfx.play("select")
+            self.updater.cancel_download()
+            return
+        if rects.get("close") and rects["close"].collidepoint(mx, my):
+            if state not in ("DOWNLOADING", "VERIFYING", "INSTALLING"):
+                self.sfx.play("select")
+                self.overlay = None
+            return
+        # Allow clicking outside card to close only when not busy
+        card = rects.get("card")
+        if card and not card.collidepoint(mx, my) and state not in ("DOWNLOADING", "VERIFYING", "INSTALLING"):
+            self.sfx.play("select")
+            self.overlay = None
+
     def handle_click(self, pos, button):
         mx, my = pos
 
         if self.overlay is not None:
+            if self.overlay[0] == "UPDATE":
+                self.handle_update_overlay_click(mx, my)
+                return
             self.overlay = None
             self.sfx.play("select")
             return
@@ -748,6 +788,16 @@ class Game:
                     self.sfx.play("select")
                     return
                 y += 60
+
+            update_rect = pygame.Rect(s_x + 16, SCREEN_H - 224, SIDEBAR_W - 32, 26)
+            if update_rect.collidepoint(mx, my):
+                self.sfx.play("select")
+                self.updater.mark_seen()
+                snap = self.updater.snapshot()
+                if snap["state"] in ("IDLE", "UP_TO_DATE", "ERROR"):
+                    self.updater.check_for_updates(silent=False)
+                self.overlay = ("UPDATE", None)
+                return
 
             fire_rect = pygame.Rect(s_x + 16, SCREEN_H - 166, SIDEBAR_W - 32, 42)
             reset_rect = pygame.Rect(s_x + 16, SCREEN_H - 116, SIDEBAR_W - 32, 38)
@@ -1514,8 +1564,34 @@ class Game:
             self.screen.blit(q_surf, (help_rect.centerx - q_surf.get_width() // 2, help_rect.centery - q_surf.get_height() // 2))
             y += 60
 
+        # Version & Self-Update Status Pill
+        up_snap = self.updater.snapshot()
+        up_state = up_snap["state"]
+        update_rect = pygame.Rect(s_x + 16, SCREEN_H - 224, SIDEBAR_W - 32, 26)
+        u_hov = (self.overlay is None) and update_rect.collidepoint(mx, my)
+        if up_state == "AVAILABLE":
+            ver = (up_snap["release_info"] or {}).get("version", "")
+            u_bg = (22, 62, 48) if u_hov else (16, 48, 38)
+            u_bd = ACCENT_GREEN
+            u_fg = ACCENT_GREEN
+            u_label = f"UPDATE AVAILABLE: v{ver}  •  CLICK"
+        elif up_state in ("CHECKING", "DOWNLOADING", "VERIFYING", "INSTALLING"):
+            u_bg = (48, 38, 18)
+            u_bd = ACCENT_AMBER
+            u_fg = ACCENT_AMBER
+            u_label = "CHECKING UPDATES..." if up_state == "CHECKING" else "UPDATING APP..."
+        else:
+            u_bg = (30, 42, 58) if u_hov else (20, 27, 39)
+            u_bd = ACCENT_CYAN if u_hov else GRID_LINE
+            u_fg = TEXT_WHITE if u_hov else TEXT_MUTED
+            u_label = f"v{APP_VERSION}  •  CHECK FOR UPDATES"
+        pygame.draw.rect(self.screen, u_bg, update_rect, border_radius=5)
+        pygame.draw.rect(self.screen, u_bd, update_rect, 1, border_radius=5)
+        u_surf = self.font_xs.render(u_label, True, u_fg)
+        self.screen.blit(u_surf, (update_rect.centerx - u_surf.get_width() // 2, update_rect.centery - u_surf.get_height() // 2))
+
         # Compact keybind legend (centered inside sidebar)
-        hint = self.font_xs.render("SPACE Fire  •  R Reset  •  H Info  •  M Mute", True, TEXT_MUTED)
+        hint = self.font_xs.render("SPACE Fire  •  R Reset  •  H Info  •  U Update", True, TEXT_MUTED)
         self.screen.blit(hint, (s_x + (SIDEBAR_W - hint.get_width()) // 2, SCREEN_H - 190))
 
         # Action Buttons (all text centered within button rects)
@@ -1681,6 +1757,138 @@ class Game:
             b_txt = self.font_md.render("CLOSE  [CLICK / ESC]", True, TEXT_WHITE)
             self.screen.blit(b_txt, (btn.centerx - b_txt.get_width() // 2, btn.centery - b_txt.get_height() // 2))
 
+        elif kind == "UPDATE":
+            snap = self.updater.snapshot()
+            state = snap["state"]
+            info = snap["release_info"] or {}
+            can_install = snap["can_self_install"] and bool(info.get("zip_url"))
+            card_w = 580
+
+            notes_raw = info.get("notes") or ""
+            notes_lines = []
+            for para in notes_raw.splitlines():
+                clean_p = para.strip().lstrip("#*-• ").strip()
+                if clean_p:
+                    notes_lines.extend(self.wrap_text(self.font_sm, clean_p, card_w - 64))
+                if len(notes_lines) >= 8:
+                    break
+            notes_lines = notes_lines[:8]
+
+            card_h = 260 + (len(notes_lines) * 19 + 26 if state == "AVAILABLE" and notes_lines else 0)
+            card = pygame.Rect((SCREEN_W - card_w) // 2, (SCREEN_H - card_h) // 2, card_w, card_h)
+            self.update_btn_rects = {"card": card}
+
+            accent = ACCENT_GREEN if state == "AVAILABLE" else (ACCENT_RED if state == "ERROR" else ACCENT_CYAN)
+            pygame.draw.rect(self.screen, (18, 25, 38), card, border_radius=12)
+            pygame.draw.rect(self.screen, accent, card, 2, border_radius=12)
+
+            tag = self.font_xs.render(f"SOFTWARE UPDATE  •  INSTALLED v{APP_VERSION}", True, accent)
+            self.screen.blit(tag, (card.x + 28, card.y + 20))
+
+            if state == "AVAILABLE":
+                headline = f"1550nm v{info.get('version', '')} is Ready to Install"
+            elif state == "CHECKING":
+                headline = "Checking GitHub Releases..."
+            elif state == "UP_TO_DATE":
+                headline = f"1550nm v{APP_VERSION} is Up to Date"
+            elif state == "DOWNLOADING":
+                headline = f"Downloading 1550nm v{info.get('version', '')}..."
+            elif state == "VERIFYING":
+                headline = "Verifying Signature & Checksum..."
+            elif state == "INSTALLING":
+                headline = "Installing Update & Relaunching..."
+            elif state == "ERROR":
+                headline = "Update Check / Install Notice"
+            else:
+                headline = "Software Updates"
+
+            self.screen.blit(self.font_lg.render(headline, True, TEXT_WHITE), (card.x + 28, card.y + 42))
+            pygame.draw.line(self.screen, GRID_LINE, (card.x + 28, card.y + 72), (card.right - 28, card.y + 72), 1)
+
+            y = card.y + 86
+            status_lines = self.wrap_text(self.font_sm, snap["status_text"] or "Querying GitHub Releases...", card_w - 56)
+            for sl in status_lines[:3]:
+                st_col = ACCENT_RED if state == "ERROR" else (ACCENT_GREEN if state in ("AVAILABLE", "UP_TO_DATE") else TEXT_WHITE)
+                self.screen.blit(self.font_sm.render(sl, True, st_col), (card.x + 28, y))
+                y += 19
+
+            if state == "AVAILABLE" and notes_lines:
+                y += 8
+                self.screen.blit(self.font_xs.render("RELEASE NOTES", True, ACCENT_AMBER), (card.x + 28, y))
+                y += 18
+                box_h = len(notes_lines) * 19 + 14
+                nbox = pygame.Rect(card.x + 28, y, card_w - 56, box_h)
+                pygame.draw.rect(self.screen, (13, 19, 30), nbox, border_radius=7)
+                pygame.draw.rect(self.screen, (38, 50, 68), nbox, 1, border_radius=7)
+                ny = nbox.y + 7
+                for nl in notes_lines:
+                    self.screen.blit(self.font_sm.render(nl, True, TEXT_MUTED), (nbox.x + 12, ny))
+                    ny += 19
+                y = nbox.bottom + 10
+
+            if state in ("DOWNLOADING", "VERIFYING", "INSTALLING"):
+                bar_rect = pygame.Rect(card.x + 28, card.bottom - 98, card_w - 56, 16)
+                pygame.draw.rect(self.screen, (13, 19, 30), bar_rect, border_radius=8)
+                fill_w = max(8, int(bar_rect.w * snap["progress"]))
+                pygame.draw.rect(self.screen, ACCENT_CYAN if state == "DOWNLOADING" else ACCENT_GREEN, (bar_rect.x, bar_rect.y, fill_w, bar_rect.h), border_radius=8)
+                pygame.draw.rect(self.screen, (52, 70, 96), bar_rect, 1, border_radius=8)
+
+            # Action buttons row
+            btn_y = card.bottom - 56
+            if state == "AVAILABLE":
+                if can_install:
+                    b_inst = pygame.Rect(card.x + 28, btn_y, 210, 38)
+                    b_page = pygame.Rect(card.x + 248, btn_y, 174, 38)
+                    b_later = pygame.Rect(card.right - 126, btn_y, 98, 38)
+                    self.update_btn_rects["install"] = b_inst
+                    self.update_btn_rects["open_page"] = b_page
+                    self.update_btn_rects["close"] = b_later
+                    pygame.draw.rect(self.screen, (74, 228, 172) if b_inst.collidepoint(mx, my) else ACCENT_GREEN, b_inst, border_radius=7)
+                    t1 = self.font_md.render("INSTALL & RELAUNCH", True, BG_DARK)
+                    self.screen.blit(t1, (b_inst.centerx - t1.get_width() // 2, b_inst.centery - t1.get_height() // 2))
+                else:
+                    b_page = pygame.Rect(card.x + 28, btn_y, 250, 38)
+                    b_later = pygame.Rect(card.right - 140, btn_y, 112, 38)
+                    self.update_btn_rects["open_page"] = b_page
+                    self.update_btn_rects["close"] = b_later
+                pygame.draw.rect(self.screen, (46, 62, 86) if b_page.collidepoint(mx, my) else PANEL_BG, b_page, border_radius=7)
+                pygame.draw.rect(self.screen, ACCENT_CYAN, b_page, 1, border_radius=7)
+                t2 = self.font_md.render("RELEASE PAGE", True, TEXT_WHITE)
+                self.screen.blit(t2, (b_page.centerx - t2.get_width() // 2, b_page.centery - t2.get_height() // 2))
+                pygame.draw.rect(self.screen, (46, 56, 72) if b_later.collidepoint(mx, my) else PANEL_BG, b_later, border_radius=7)
+                pygame.draw.rect(self.screen, GRID_LINE, b_later, 1, border_radius=7)
+                t3 = self.font_md.render("LATER", True, TEXT_MUTED)
+                self.screen.blit(t3, (b_later.centerx - t3.get_width() // 2, b_later.centery - t3.get_height() // 2))
+            elif state == "DOWNLOADING":
+                b_cancel = pygame.Rect(card.centerx - 90, btn_y, 180, 38)
+                self.update_btn_rects["cancel"] = b_cancel
+                pygame.draw.rect(self.screen, (64, 30, 38) if b_cancel.collidepoint(mx, my) else (48, 22, 28), b_cancel, border_radius=7)
+                pygame.draw.rect(self.screen, ACCENT_RED, b_cancel, 1, border_radius=7)
+                tc = self.font_md.render("CANCEL DOWNLOAD", True, TEXT_WHITE)
+                self.screen.blit(tc, (b_cancel.centerx - tc.get_width() // 2, b_cancel.centery - tc.get_height() // 2))
+            elif state in ("VERIFYING", "INSTALLING"):
+                wait_lbl = self.font_sm.render("Please wait — do not close the app while installing...", True, TEXT_MUTED)
+                self.screen.blit(wait_lbl, (card.centerx - wait_lbl.get_width() // 2, btn_y + 10))
+            else:
+                b_chk = pygame.Rect(card.x + 28, btn_y, 175, 38)
+                b_page = pygame.Rect(card.x + 213, btn_y, 195, 38)
+                b_cls = pygame.Rect(card.right - 134, btn_y, 106, 38)
+                self.update_btn_rects["recheck"] = b_chk
+                self.update_btn_rects["open_page"] = b_page
+                self.update_btn_rects["close"] = b_cls
+                pygame.draw.rect(self.screen, (42, 58, 82) if b_chk.collidepoint(mx, my) else PANEL_BG, b_chk, border_radius=7)
+                pygame.draw.rect(self.screen, ACCENT_CYAN, b_chk, 1, border_radius=7)
+                t1 = self.font_md.render("CHECK AGAIN", True, TEXT_WHITE)
+                self.screen.blit(t1, (b_chk.centerx - t1.get_width() // 2, b_chk.centery - t1.get_height() // 2))
+                pygame.draw.rect(self.screen, (42, 58, 82) if b_page.collidepoint(mx, my) else PANEL_BG, b_page, border_radius=7)
+                pygame.draw.rect(self.screen, GRID_LINE, b_page, 1, border_radius=7)
+                t2 = self.font_md.render("DOWNLOAD PAGE", True, TEXT_WHITE)
+                self.screen.blit(t2, (b_page.centerx - t2.get_width() // 2, b_page.centery - t2.get_height() // 2))
+                pygame.draw.rect(self.screen, (46, 56, 72) if b_cls.collidepoint(mx, my) else PANEL_BG, b_cls, border_radius=7)
+                pygame.draw.rect(self.screen, GRID_LINE, b_cls, 1, border_radius=7)
+                t3 = self.font_md.render("CLOSE", True, TEXT_MUTED)
+                self.screen.blit(t3, (b_cls.centerx - t3.get_width() // 2, b_cls.centery - t3.get_height() // 2))
+
     def run(self):
         while True:
             self.frame += 1
@@ -1692,6 +1900,12 @@ class Game:
                     self.handle_click(event.pos, event.button)
                 elif event.type == pygame.KEYDOWN:
                     if self.overlay is not None:
+                        if self.overlay[0] == "UPDATE":
+                            st = self.updater.snapshot()["state"]
+                            if event.key == pygame.K_ESCAPE and st not in ("DOWNLOADING", "VERIFYING", "INSTALLING"):
+                                self.overlay = None
+                                self.sfx.play("select")
+                            continue
                         if event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE, pygame.K_h):
                             self.overlay = None
                             self.sfx.play("select")
@@ -1704,6 +1918,12 @@ class Game:
                     elif event.key == pygame.K_h:
                         self.overlay = ("LEVEL", self.level_idx)
                         self.sfx.play("select")
+                    elif event.key == pygame.K_u:
+                        self.sfx.play("select")
+                        self.updater.mark_seen()
+                        if self.updater.snapshot()["state"] in ("IDLE", "UP_TO_DATE", "ERROR"):
+                            self.updater.check_for_updates(silent=False)
+                        self.overlay = ("UPDATE", None)
                     elif event.key == pygame.K_m:
                         self.sfx.toggle_mute()
                         if not self.sfx.muted:
@@ -1752,6 +1972,14 @@ class Game:
             for sw in self.shockwaves:
                 sw.update()
             self.shockwaves = [sw for sw in self.shockwaves if sw.life > 0]
+
+            up_snap = self.updater.snapshot()
+            if up_snap["ready_to_quit"]:
+                pygame.quit()
+                sys.exit(0)
+            if up_snap["has_unseen_update"] and self.overlay is None and not self.sim_active:
+                self.updater.mark_seen()
+                self.overlay = ("UPDATE", None)
 
             self.draw()
             self.clock.tick(FPS)
