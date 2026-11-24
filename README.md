@@ -2,15 +2,16 @@
 
 An educational 2D optical-bench puzzle game built in **Python + Pygame** that teaches the real physics and hardware stack of quantum networking — single-photon transduction (`780nm`/`637nm` → `1550nm`), Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, entanglement distillation, and adaptive optics satellite downlinks.
 
-## Download for macOS (Signed & Notarized)
+## Download (macOS & Windows)
 
 * **Download Page:** https://skcalanderson2.github.io/qn_bench/
 * **GitHub Releases:** https://github.com/skcalanderson2/qn_bench/releases/latest
 
-The macOS `.dmg` installer contains a standalone `QN Bench.app` signed with an Apple Developer ID certificate and notarized by Apple.
+* **macOS (Apple Silicon):** Download `QN-Bench-*-macos-arm64.dmg` (signed with an Apple Developer ID certificate and notarized by Apple) and drag `QN Bench.app` into `Applications`.
+* **Windows (10/11 x64):** Download `QN-Bench-*-windows-x64-setup.exe` (per-user installer, no admin needed) or the portable `QN-Bench-windows-x64.zip`. *(Unsigned build: if Windows SmartScreen prompts on first launch, click **More info → Run anyway**.)*
 
 ### In-App Self-Updating
-`QN Bench.app` automatically checks GitHub Releases in the background on startup (or manually via the sidebar version pill / `U` key). When a newer release is available, it displays the release notes and asks for your permission before downloading, verifying the SHA-256 digest and Apple Developer signature (`TeamIdentifier`), swapping the app bundle, and relaunching.
+`QN Bench` automatically checks GitHub Releases in the background on startup (or manually via the sidebar version pill / `U` key). When a newer release is available, it displays the release notes and asks for your permission before downloading, verifying the SHA-256 digest (plus Apple Developer signature `TeamIdentifier` on macOS), swapping the bundle, and relaunching.
 
 ---
 

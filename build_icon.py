@@ -8,6 +8,7 @@ import io
 import math
 import os
 import struct
+import sys
 from pathlib import Path
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -140,5 +141,44 @@ def build_icns(output_path=Path("build/QN-Bench.icns")):
     print(f"Generated {output_path} ({len(header) + len(body):,} bytes)")
 
 
+def build_ico(output_path=Path("build/QN-Bench.ico")):
+    """Pack multi-resolution PNG frames directly into a Windows .ico container."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    master = render_master_icon(1024)
+    sizes = [16, 24, 32, 48, 64, 128, 256]
+    images = []
+    for px in sizes:
+        scaled = pygame.transform.smoothscale(master, (px, px))
+        images.append((px, _surface_to_png_bytes(scaled)))
+
+    count = len(images)
+    header = struct.pack("<HHH", 0, 1, count)
+    offset = 6 + 16 * count
+    entries = []
+    payloads = []
+    for px, data in images:
+        dim = 0 if px >= 256 else px
+        entries.append(struct.pack("<BBBBHHII", dim, dim, 0, 0, 1, 32, len(data), offset))
+        payloads.append(data)
+        offset += len(data)
+
+    raw = header + b"".join(entries) + b"".join(payloads)
+    output_path.write_bytes(raw)
+    print(f"Generated {output_path} ({len(raw):,} bytes)")
+
+
 if __name__ == "__main__":
-    build_icns()
+    args = set(sys.argv[1:])
+    if "--all" in args:
+        build_icns()
+        build_ico()
+    elif "--ico" in args:
+        build_ico()
+    elif "--icns" in args:
+        build_icns()
+    elif sys.platform == "win32":
+        build_ico()
+    else:
+        build_icns()

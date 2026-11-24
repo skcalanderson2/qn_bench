@@ -176,11 +176,12 @@ fi
 
 echo "==> Publishing GitHub Release ${TAG}..."
 if [[ -z "$RELEASE_NOTES" ]]; then
-    RELEASE_NOTES="Signed & notarized macOS (Apple Silicon) release of **QN Bench — Quantum Networking Optical Bench** (${TAG}).
+    RELEASE_NOTES="Desktop release of **QN Bench — Quantum Networking Optical Bench** (${TAG}).
 
 ### Downloads
-- **macOS Installer (\`.dmg\`)**: Drag \`QN Bench.app\` into your \`Applications\` folder.
-- **Auto-Update Archive (\`.zip\`)**: Used automatically by the in-app updater (verified via SHA-256 + Apple Developer ID signature)."
+- **macOS (Apple Silicon — Signed & Notarized):** \`QN-Bench-${VERSION}-macos-arm64.dmg\` (drag \`QN Bench.app\` into \`Applications\`)
+- **Windows (x64 — Built via GitHub Actions):** \`QN-Bench-${VERSION}-windows-x64-setup.exe\` installer or portable \`QN-Bench-windows-x64.zip\` *(unsigned: click More info → Run anyway if SmartScreen prompts)*
+- **Auto-Update Archives (\`.zip\`):** Used automatically by the opt-in in-app updater (verified via SHA-256 + Apple Developer ID signature on macOS)."
 fi
 
 if gh release view "$TAG" >/dev/null 2>&1; then

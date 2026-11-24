@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>QN Bench — Quantum Networking Optical Bench for macOS</title>
-  <meta name="description" content="Download the signed and notarized macOS desktop app for QN Bench — an educational 2D quantum networking optical-bench puzzle game.">
+  <title>QN Bench — Quantum Networking Optical Bench for macOS &amp; Windows</title>
+  <meta name="description" content="Download QN Bench for macOS (signed &amp; notarized) and Windows (x64) — an educational 2D quantum networking optical-bench puzzle game.">
   <style>
     :root {
       color-scheme: dark;
@@ -241,10 +241,35 @@
       background: color-mix(in oklab, var(--accent-cyan) 86%, white);
     }
 
+    .btn-stack {
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .btn-platform-alt {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      padding: 0.8rem 1.1rem;
+      border-radius: 10px;
+      border: 2px solid var(--border-strong);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.96rem;
+    }
+
+    .btn-platform-alt:hover {
+      border-color: var(--accent-cyan);
+    }
+
     .btn-secondary-row {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.65rem;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.55rem;
       margin-top: 0.75rem;
     }
 
@@ -522,7 +547,7 @@
     }
 
     @media (forced-colors: active) {
-      .download-card, .card, .badge, .nav-link, .btn-primary, .btn-secondary, .shot-card, dialog.lightbox, .lightbox-close {
+      .download-card, .card, .badge, .nav-link, .btn-primary, .btn-platform-alt, .btn-secondary, .shot-card, dialog.lightbox, .lightbox-close {
         border: 2px solid ButtonText;
       }
       .btn-primary {
@@ -558,7 +583,7 @@
       <section class="hero" aria-labelledby="hero-heading">
         <div class="hero-grid">
           <div>
-            <span class="eyebrow">C-BAND TELECOM • MACOS DESKTOP APP</span>
+            <span class="eyebrow">C-BAND TELECOM • MACOS &amp; WINDOWS DESKTOP APP</span>
             <h1 id="hero-heading">Build real quantum network links on an optical bench.</h1>
             <p class="lead">
               <strong>QN Bench</strong> is a 2D educational puzzle game that teaches how single photons are generated,
@@ -566,8 +591,8 @@
               and delivered to cryogenic detectors and fault-tolerant QPUs.
             </p>
             <div class="badges" aria-label="Release assurances">
-              <span class="badge">✓ Signed with Apple Developer ID</span>
-              <span class="badge">✓ Apple Notarized (Gatekeeper Ready)</span>
+              <span class="badge">✓ macOS Signed &amp; Apple Notarized</span>
+              <span class="badge">✓ Windows 10/11 (x64) Installer &amp; Portable ZIP</span>
               <span class="badge">✓ Opt-in In-App Self-Updater</span>
               <span class="badge">✓ 11 Physics Levels • Zero External Assets</span>
             </div>
@@ -576,16 +601,24 @@
           <aside class="download-card" aria-labelledby="dl-heading">
             <div class="release-header">
               <span id="dl-heading" class="release-ver" data-el="version">Latest Release</span>
-              <span class="release-meta" data-el="date">macOS 12+ • Apple Silicon</span>
+              <span class="release-meta" data-el="date">macOS (arm64) &amp; Windows (x64)</span>
             </div>
 
-            <a class="btn-primary" data-el="dmg-link" href="https://github.com/skcalanderson2/qn_bench/releases/latest">
-              <span>⬇ Download QN Bench for macOS (.dmg)</span>
-            </a>
+            <div class="btn-stack" data-el="platform-buttons">
+              <a class="btn-primary" data-el="dmg-link" href="https://github.com/skcalanderson2/qn_bench/releases/latest">
+                <span>⬇ Download for macOS (.dmg)</span>
+              </a>
+              <a class="btn-platform-alt" data-el="win-setup-link" href="https://github.com/skcalanderson2/qn_bench/releases/latest">
+                <span>⬇ Download for Windows (.exe)</span>
+              </a>
+            </div>
 
             <div class="btn-secondary-row">
               <a class="btn-secondary" data-el="zip-link" href="https://github.com/skcalanderson2/qn_bench/releases/latest">
-                App Archive (.zip)
+                macOS .zip
+              </a>
+              <a class="btn-secondary" data-el="win-zip-link" href="https://github.com/skcalanderson2/qn_bench/releases/latest">
+                Windows .zip
               </a>
               <a class="btn-secondary" data-el="release-link" href="https://github.com/skcalanderson2/qn_bench/releases/latest">
                 Release Page
@@ -593,12 +626,12 @@
             </div>
 
             <div class="checksum-box">
-              <strong>SHA-256 Checksum (.dmg)</strong>
+              <strong data-el="sha-label">SHA-256 Checksum</strong>
               <span data-el="sha256">Loading from GitHub Releases…</span>
             </div>
 
             <p class="status-note" data-el="status">
-              Signed &amp; notarized macOS app bundle. Future updates notify you inside the app and only install with your permission.
+              macOS builds are signed &amp; Apple-notarized. Windows builds are unsigned (click <em>More info → Run anyway</em> if SmartScreen prompts). Future updates notify you inside the app and only install with your permission.
             </p>
           </aside>
         </div>
@@ -651,23 +684,32 @@
 
       <section class="block" aria-labelledby="install-heading">
         <h2 id="install-heading">Installation &amp; Automatic Updates</h2>
-        <div class="cards">
+        <div class="cards three">
           <div class="card">
-            <span class="tag">INSTALL</span>
-            <h3>Drag-and-drop macOS Installer</h3>
+            <span class="tag">MACOS INSTALL</span>
+            <h3>Signed &amp; Notarized Installer</h3>
             <ol class="steps">
               <li>Download <strong>QN-Bench-*-macos-arm64.dmg</strong> above and open it.</li>
               <li>Drag <strong>QN Bench.app</strong> into the <strong>Applications</strong> folder.</li>
-              <li>Launch <strong>QN Bench</strong> — it is signed and notarized by Apple, so Gatekeeper verifies it cleanly.</li>
+              <li>Launch <strong>QN Bench</strong> — signed and notarized by Apple for Gatekeeper.</li>
+            </ol>
+          </div>
+          <div class="card">
+            <span class="tag">WINDOWS INSTALL</span>
+            <h3>Windows 10/11 (x64)</h3>
+            <ol class="steps">
+              <li>Download <strong>QN-Bench-*-windows-x64-setup.exe</strong> (or extract the portable <strong>.zip</strong>).</li>
+              <li>Because the Windows build is unsigned, if SmartScreen appears click <strong>More info → Run anyway</strong>.</li>
+              <li>Installs per-user (no admin required) so in-app updates work cleanly.</li>
             </ol>
           </div>
           <div class="card">
             <span class="tag">SELF-UPDATE</span>
-            <h3>Permission-Based In-App Updates</h3>
+            <h3>Permission-Based Updates</h3>
             <ol class="steps">
-              <li>On launch (or by pressing <strong>U</strong> / clicking the version pill), QN Bench checks GitHub Releases.</li>
-              <li>When a newer version is published, an in-app modal shows the release notes and asks for permission.</li>
-              <li>Clicking <strong>Install &amp; Relaunch</strong> verifies the SHA-256 hash and Apple Developer signature before swapping the bundle.</li>
+              <li>On launch (or via <strong>U</strong> / the version pill), QN Bench checks GitHub Releases.</li>
+              <li>When an update is available, a modal displays the release notes and asks for permission.</li>
+              <li>Clicking <strong>Install &amp; Relaunch</strong> verifies SHA-256 (plus Apple signature on macOS) before swapping.</li>
             </ol>
           </div>
         </div>
@@ -770,33 +812,65 @@
         const tag = rel.tag_name || "Latest";
         el("version").textContent = tag;
 
-        const dmg = (rel.assets || []).find((a) => a.name.endsWith(".dmg"));
-        const zip = (rel.assets || []).find((a) => a.name.endsWith(".zip"));
-        const sums = (rel.assets || []).find((a) => a.name === "SHA256SUMS.txt");
+        const assets = rel.assets || [];
+        const dmg = assets.find((a) => a.name.endsWith(".dmg"));
+        const macZip = assets.find((a) => a.name.endsWith(".zip") && a.name.toLowerCase().includes("macos"));
+        const winSetup = assets.find((a) => a.name.endsWith(".exe"));
+        const winZip = assets.find((a) => a.name.endsWith(".zip") && a.name.toLowerCase().includes("windows"));
+        const sums = assets.find((a) => a.name === "SHA256SUMS.txt");
+        const winSums = assets.find((a) => a.name === "SHA256SUMS-windows.txt");
 
+        const isWin = /Windows/i.test(navigator.userAgent);
         const pubDate = rel.published_at ? new Date(rel.published_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
-        const sizeLabel = dmg ? formatBytes(dmg.size) : "";
-        el("date").textContent = [pubDate, sizeLabel, "Apple Silicon"].filter(Boolean).join(" • ");
+        el("date").textContent = [pubDate, "macOS & Windows"].filter(Boolean).join(" • ");
+
+        const dmgLink = el("dmg-link");
+        const winLink = el("win-setup-link");
 
         if (dmg) {
-          el("dmg-link").href = dmg.browser_download_url;
-          el("dmg-link").textContent = `⬇ Download ${dmg.name} (${sizeLabel})`;
+          dmgLink.href = dmg.browser_download_url;
+          dmgLink.textContent = `⬇ Download for macOS (.dmg • ${formatBytes(dmg.size)})`;
         }
-        if (zip) {
-          el("zip-link").href = zip.browser_download_url;
+        if (winSetup) {
+          winLink.href = winSetup.browser_download_url;
+          winLink.textContent = `⬇ Download for Windows (.exe • ${formatBytes(winSetup.size)})`;
+        } else if (winZip) {
+          winLink.href = winZip.browser_download_url;
+          winLink.textContent = `⬇ Download for Windows (.zip • ${formatBytes(winZip.size)})`;
+        } else {
+          winLink.textContent = "Windows build compiling on GitHub Actions…";
+        }
+
+        // Highlight visitor's current OS as primary button
+        if (isWin && (winSetup || winZip)) {
+          winLink.className = "btn-primary";
+          dmgLink.className = "btn-platform-alt";
+          el("platform-buttons").prepend(winLink);
+        }
+
+        if (macZip) {
+          el("zip-link").href = macZip.browser_download_url;
+        }
+        if (winZip) {
+          el("win-zip-link").href = winZip.browser_download_url;
         }
         if (rel.html_url) {
           el("release-link").href = rel.html_url;
         }
-        el("notes").textContent = (rel.body || "Signed macOS release.").trim();
+        el("notes").textContent = (rel.body || "macOS & Windows desktop release.").trim();
 
-        if (dmg && dmg.digest) {
-          el("sha256").textContent = dmg.digest.replace(/^sha256:/i, "");
-        } else if (sums) {
+        const primaryAsset = isWin ? (winSetup || winZip || dmg) : (dmg || winSetup);
+        const primarySums = isWin ? (winSums || sums) : (sums || winSums);
+        if (primaryAsset) {
+          el("sha-label").textContent = `SHA-256 Checksum (${primaryAsset.name})`;
+        }
+        if (primaryAsset && primaryAsset.digest) {
+          el("sha256").textContent = primaryAsset.digest.replace(/^sha256:/i, "");
+        } else if (primarySums) {
           el("sha256").innerHTML = "";
           const link = document.createElement("a");
-          link.href = sums.browser_download_url;
-          link.textContent = "Download SHA256SUMS.txt from GitHub Release";
+          link.href = primarySums.browser_download_url;
+          link.textContent = `Download ${primarySums.name} from GitHub Release`;
           el("sha256").appendChild(link);
         } else {
           el("sha256").textContent = "See GitHub Release assets for checksum verification.";

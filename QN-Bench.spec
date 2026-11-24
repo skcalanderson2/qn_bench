@@ -1,13 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for building the standalone macOS QN Bench.app bundle."""
+"""Cross-platform PyInstaller spec for QN Bench (macOS .app and Windows x64)."""
 
 import sys
+
 sys.path.insert(0, SPECPATH)
 
 from PyInstaller.utils.hooks import collect_data_files
 from version import APP_NAME, APP_VERSION, BUNDLE_ID
 
 certifi_datas = collect_data_files("certifi")
+is_macos = sys.platform == "darwin"
+is_windows = sys.platform == "win32"
 
 a = Analysis(
     ["qn_bench.py"],
@@ -51,6 +54,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon="build/QN-Bench.ico" if is_windows else None,
 )
 
 coll = COLLECT(
@@ -63,21 +67,22 @@ coll = COLLECT(
     name=APP_NAME,
 )
 
-app = BUNDLE(
-    coll,
-    name=f"{APP_NAME}.app",
-    icon="build/QN-Bench.icns",
-    bundle_identifier=BUNDLE_ID,
-    version=APP_VERSION,
-    info_plist={
-        "CFBundleName": APP_NAME,
-        "CFBundleDisplayName": APP_NAME,
-        "CFBundleShortVersionString": APP_VERSION,
-        "CFBundleVersion": APP_VERSION,
-        "CFBundlePackageType": "APPL",
-        "NSHighResolutionCapable": True,
-        "LSMinimumSystemVersion": "12.0",
-        "LSApplicationCategoryType": "public.app-category.educational-games",
-        "NSHumanReadableCopyright": "Copyright © Al Anderson",
-    },
-)
+if is_macos:
+    app = BUNDLE(
+        coll,
+        name=f"{APP_NAME}.app",
+        icon="build/QN-Bench.icns",
+        bundle_identifier=BUNDLE_ID,
+        version=APP_VERSION,
+        info_plist={
+            "CFBundleName": APP_NAME,
+            "CFBundleDisplayName": APP_NAME,
+            "CFBundleShortVersionString": APP_VERSION,
+            "CFBundleVersion": APP_VERSION,
+            "CFBundlePackageType": "APPL",
+            "NSHighResolutionCapable": True,
+            "LSMinimumSystemVersion": "12.0",
+            "LSApplicationCategoryType": "public.app-category.educational-games",
+            "NSHumanReadableCopyright": "Copyright © Al Anderson",
+        },
+    )
