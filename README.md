@@ -46,26 +46,3 @@ python3 -m venv .venv
 
 ---
 
-## Building & Publishing a Signed macOS Release
-
-Prerequisites (one-time on your Mac):
-1. Valid `Developer ID Application` certificate installed in Keychain.
-2. `notarytool` Keychain profile stored (`qn-bench-notary`).
-3. GitHub CLI (`gh`) authenticated.
-4. Build virtualenv initialized:
-   ```bash
-   python3 -m venv .venv
-   .venv/bin/pip install pygame pyinstaller certifi
-   ```
-
-To build, sign, notarize, staple, package `.dmg` + `.zip` + `SHA256SUMS.txt`, and publish a new GitHub Release (which triggers the in-app updater for existing users):
-
-```bash
-./release.sh --version 1.0.1 --notes "Describe what changed in this release."
-```
-
-To test a local signed & notarized build in `dist/` without publishing to GitHub:
-
-```bash
-./release.sh --skip-publish
-```
