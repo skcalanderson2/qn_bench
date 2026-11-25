@@ -606,6 +606,7 @@ impl eframe::App for QnBenchApp {
                                 let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
                                 let bd = if is_sel { tool.color() } else { GRID_LINE };
 
+                                let mut q_rect = egui::Rect::NOTHING;
                                 let frame_resp = egui::Frame::NONE
                                     .fill(bg)
                                     .stroke(Stroke::new(if is_sel { 2.0_f32 } else { 1.0_f32 }, bd))
@@ -619,12 +620,14 @@ impl eframe::App for QnBenchApp {
                                                 ui.label(RichText::new(tool.desc()).size(11.0).color(TEXT_MUTED));
                                             });
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                                                let q_btn = egui::Button::new(RichText::new("?").strong().size(11.0).color(ACCENT_CYAN))
+                                                let q_btn = egui::Button::new(RichText::new("?").strong().size(11.5).color(ACCENT_CYAN))
                                                     .fill(Color32::from_rgb(20, 28, 42))
-                                                    .stroke(Stroke::new(1.0_f32, GRID_LINE))
-                                                    .corner_radius(CornerRadius::same(11))
-                                                    .min_size(Vec2::splat(22.0));
-                                                if ui.add(q_btn).on_hover_text("Hardware Physics & Tip").clicked() {
+                                                    .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                                                    .corner_radius(CornerRadius::same(12))
+                                                    .min_size(Vec2::splat(24.0));
+                                                let q_resp = ui.add(q_btn).on_hover_text("Open Hardware Physics & Tip");
+                                                q_rect = q_resp.rect;
+                                                if q_resp.clicked() && self.overlay == Overlay::None {
                                                     self.overlay = Overlay::Comp(tool.doc_key());
                                                     self.sfx.play(SfxEvent::Select);
                                                 }
@@ -633,7 +636,11 @@ impl eframe::App for QnBenchApp {
                                     })
                                     .response;
 
-                                let card_click = ui.interact(frame_resp.rect, ui.id().with(("sb_card", idx)), egui::Sense::click());
+                                let select_rect = egui::Rect::from_min_max(
+                                    frame_resp.rect.min,
+                                    egui::Pos2::new((q_rect.left() - 4.0).max(frame_resp.rect.left()), frame_resp.rect.max.y),
+                                );
+                                let card_click = ui.interact(select_rect, ui.id().with(("sb_card", idx)), egui::Sense::click());
                                 if card_click.clicked() && self.overlay == Overlay::None {
                                     self.sim.sandbox_tool = tool;
                                     self.sim.erase_mode = false;
@@ -660,6 +667,7 @@ impl eframe::App for QnBenchApp {
                                 let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
                                 let bd = if is_sel { comp.color() } else if count > 0 { GRID_LINE } else { Color32::from_rgb(30, 36, 46) };
 
+                                let mut q_rect = egui::Rect::NOTHING;
                                 let frame_resp = egui::Frame::NONE
                                     .fill(bg)
                                     .stroke(Stroke::new(if is_sel { 2.0_f32 } else { 1.0_f32 }, bd))
@@ -674,12 +682,14 @@ impl eframe::App for QnBenchApp {
                                                 ui.label(RichText::new(comp.desc()).size(11.5).color(TEXT_MUTED));
                                             });
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                                                let q_btn = egui::Button::new(RichText::new("?").strong().size(11.0).color(ACCENT_CYAN))
+                                                let q_btn = egui::Button::new(RichText::new("?").strong().size(11.5).color(ACCENT_CYAN))
                                                     .fill(Color32::from_rgb(20, 28, 42))
-                                                    .stroke(Stroke::new(1.0_f32, GRID_LINE))
-                                                    .corner_radius(CornerRadius::same(11))
-                                                    .min_size(Vec2::splat(22.0));
-                                                if ui.add(q_btn).on_hover_text("Hardware Physics & Tip").clicked() {
+                                                    .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                                                    .corner_radius(CornerRadius::same(12))
+                                                    .min_size(Vec2::splat(24.0));
+                                                let q_resp = ui.add(q_btn).on_hover_text("Open Hardware Physics & Tip");
+                                                q_rect = q_resp.rect;
+                                                if q_resp.clicked() && self.overlay == Overlay::None {
                                                     self.overlay = Overlay::Comp(comp.doc_key());
                                                     self.sfx.play(SfxEvent::Select);
                                                 }
@@ -688,7 +698,11 @@ impl eframe::App for QnBenchApp {
                                     })
                                     .response;
 
-                                let card_click = ui.interact(frame_resp.rect, ui.id().with(("comp_card", comp)), egui::Sense::click());
+                                let select_rect = egui::Rect::from_min_max(
+                                    frame_resp.rect.min,
+                                    egui::Pos2::new((q_rect.left() - 4.0).max(frame_resp.rect.left()), frame_resp.rect.max.y),
+                                );
+                                let card_click = ui.interact(select_rect, ui.id().with(("comp_card", comp)), egui::Sense::click());
                                 if card_click.clicked() && count > 0 && self.overlay == Overlay::None {
                                     self.sim.selected = Some(comp);
                                     self.sim.erase_mode = false;
