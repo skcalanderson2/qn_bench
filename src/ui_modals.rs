@@ -566,9 +566,13 @@ pub fn draw_modal_overlay(
                                     .corner_radius(CornerRadius::same(7))
                                     .inner_margin(egui::Margin::same(10))
                                     .show(ui, |ui| {
-                                        egui::ScrollArea::vertical().max_height(150.0).show(ui, |ui| {
-                                            ui.label(RichText::new(&info.notes).size(12.5).color(TEXT_MUTED));
-                                        });
+                                        ui.set_width(ui.available_width());
+                                        egui::ScrollArea::vertical()
+                                            .max_height(210.0)
+                                            .auto_shrink([false, true])
+                                            .show(ui, |ui| {
+                                                render_markdown_notes(ui, &info.notes);
+                                            });
                                     });
                             }
                         }
@@ -703,4 +707,169 @@ fn code_box(ui: &mut Ui, text: &str, fg: Color32, border: Color32) {
             ui.set_width(ui.available_width());
             ui.add(egui::Label::new(RichText::new(text).monospace().size(11.5).color(fg)).wrap());
         });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn sanitize_release_glyphs(s: &str) -> String {
+    s.replace('→', "->")
+        .replace('←', "<-")
+        .replace('↶', "Undo")
+        .replace('↷', "Redo")
+        .replace('✓', "OK")
+        .replace('↑', "^")
+        .replace('↓', "v")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn append_inline_markdown(job: &mut egui::text::LayoutJob, text: &str, base_size: f32, base_col: Color32) {
+    let normal_fmt = egui::TextFormat {
+        font_id: egui::FontId::proportional(base_size),
+        color: base_col,
+        ..Default::default()
+    };
+    let bold_fmt = egui::TextFormat {
+        font_id: egui::FontId::proportional(base_size + 0.3),
+        color: TEXT_WHITE,
+        ..Default::default()
+    };
+    let italic_fmt = egui::TextFormat {
+        font_id: egui::FontId::proportional(base_size),
+        color: Color32::from_rgb(172, 188, 212),
+        italics: true,
+        ..Default::default()
+    };
+    let code_fmt = egui::TextFormat {
+        font_id: egui::FontId::monospace((base_size - 0.8).max(10.0)),
+        color: ACCENT_AMBER,
+        background: Color32::from_rgb(24, 34, 48),
+        ..Default::default()
+    };
+    let link_fmt = egui::TextFormat {
+        font_id: egui::FontId::proportional(base_size),
+        color: ACCENT_CYAN,
+        underline: Stroke::new(1.0_f32, ACCENT_CYAN),
+        ..Default::default()
+    };
+
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    let mut plain_start = 0;
+    let flush_plain = |job: &mut egui::text::LayoutJob, start: usize, end: usize| {
+        if end > start {
+            job.append(&text[start..end], 0.0, normal_fmt.clone());
+        }
+    };
+
+    while i < bytes.len() {
+        // Bold: **text**
+        if bytes[i..].starts_with(b"**") {
+            if let Some(rel_end) = text[i + 2..].find("**") {
+                flush_plain(job, plain_start, i);
+                job.append(&text[i + 2..i + 2 + rel_end], 0.0, bold_fmt.clone());
+                i += 2 + rel_end + 2;
+                plain_start = i;
+                continue;
+            }
+        }
+        // Inline code: `code`
+        if bytes[i] == b'`' {
+            if let Some(rel_end) = text[i + 1..].find('`') {
+                flush_plain(job, plain_start, i);
+                job.append(&text[i + 1..i + 1 + rel_end], 0.0, code_fmt.clone());
+                i += 1 + rel_end + 1;
+                plain_start = i;
+                continue;
+            }
+        }
+        // Markdown link: [label](url)
+        if bytes[i] == b'[' {
+            if let Some(close_br) = text[i + 1..].find("](") {
+                let after_mid = i + 1 + close_br + 2;
+                if let Some(close_par) = text[after_mid..].find(')') {
+                    flush_plain(job, plain_start, i);
+                    let label = &text[i + 1..i + 1 + close_br];
+                    job.append(label, 0.0, link_fmt.clone());
+                    i = after_mid + close_par + 1;
+                    plain_start = i;
+                    continue;
+                }
+            }
+        }
+        // Bare URL: https://...
+        if text[i..].starts_with("https://") || text[i..].starts_with("http://") {
+            let end = text[i..]
+                .find(|c: char| c.is_whitespace() || c == ')' || c == ']')
+                .map(|r| i + r)
+                .unwrap_or(text.len());
+            flush_plain(job, plain_start, i);
+            job.append(&text[i..end], 0.0, link_fmt.clone());
+            i = end;
+            plain_start = i;
+            continue;
+        }
+        // Italic: *text* (single asterisk, not **)
+        if bytes[i] == b'*' && !bytes[i..].starts_with(b"**") {
+            if let Some(rel_end) = text[i + 1..].find('*') {
+                if rel_end > 0 {
+                    flush_plain(job, plain_start, i);
+                    job.append(&text[i + 1..i + 1 + rel_end], 0.0, italic_fmt.clone());
+                    i += 1 + rel_end + 1;
+                    plain_start = i;
+                    continue;
+                }
+            }
+        }
+        let ch_len = text[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+        i += ch_len;
+    }
+    flush_plain(job, plain_start, text.len());
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn render_markdown_notes(ui: &mut Ui, markdown: &str) {
+    let clean = sanitize_release_glyphs(markdown);
+    let mut first_block = true;
+    for raw_line in clean.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            ui.add_space(4.0);
+            continue;
+        }
+        if let Some(h) = line.strip_prefix("### ") {
+            if !first_block {
+                ui.add_space(6.0);
+            }
+            ui.label(RichText::new(h.trim()).strong().size(13.5).color(ACCENT_CYAN));
+            ui.add_space(2.0);
+        } else if let Some(h) = line.strip_prefix("## ") {
+            if !first_block {
+                ui.add_space(7.0);
+            }
+            ui.label(RichText::new(h.trim()).strong().size(14.5).color(TEXT_WHITE));
+            ui.add_space(2.0);
+        } else if let Some(h) = line.strip_prefix("# ") {
+            if !first_block {
+                ui.add_space(8.0);
+            }
+            ui.label(RichText::new(h.trim()).strong().size(15.5).color(ACCENT_CYAN));
+            ui.add_space(3.0);
+        } else if let Some(item) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.label(RichText::new("•").strong().size(12.5).color(ACCENT_CYAN));
+                let mut job = egui::text::LayoutJob::default();
+                append_inline_markdown(&mut job, item.trim(), 12.2, TEXT_MUTED);
+                ui.add(egui::Label::new(job).wrap());
+            });
+            ui.add_space(2.0);
+        } else if line == "---" || line == "***" {
+            ui.separator();
+        } else {
+            let mut job = egui::text::LayoutJob::default();
+            append_inline_markdown(&mut job, line, 12.2, TEXT_MUTED);
+            ui.add(egui::Label::new(job).wrap());
+            ui.add_space(2.0);
+        }
+        first_block = false;
+    }
 }

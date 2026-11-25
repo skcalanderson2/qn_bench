@@ -195,30 +195,30 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
 
                     let can_redo = sim.can_redo();
                     let r_btn = egui::Button::new(
-                        egui::RichText::new("↷")
+                        egui::RichText::new("REDO")
                             .strong()
-                            .size(11.0)
+                            .size(9.5)
                             .color(if can_redo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
                     )
                     .fill(Color32::from_rgb(20, 26, 36))
                     .stroke(Stroke::new(1.0_f32, if can_redo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
                     .corner_radius(CornerRadius::same(4))
-                    .min_size(Vec2::new(22.0, 19.0));
+                    .min_size(Vec2::new(38.0, 19.0));
                     if ui.add_enabled(can_redo, r_btn).on_hover_text("Redo [Ctrl/Cmd+Shift+Z]").clicked() {
                         sim.redo();
                     }
 
                     let can_undo = sim.can_undo();
                     let u_btn = egui::Button::new(
-                        egui::RichText::new("↶")
+                        egui::RichText::new("UNDO")
                             .strong()
-                            .size(11.0)
+                            .size(9.5)
                             .color(if can_undo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
                     )
                     .fill(Color32::from_rgb(20, 26, 36))
                     .stroke(Stroke::new(1.0_f32, if can_undo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
                     .corner_radius(CornerRadius::same(4))
-                    .min_size(Vec2::new(22.0, 19.0));
+                    .min_size(Vec2::new(38.0, 19.0));
                     if ui.add_enabled(can_undo, u_btn).on_hover_text("Undo [Ctrl/Cmd+Z]").clicked() {
                         sim.undo();
                     }

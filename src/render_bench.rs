@@ -705,7 +705,7 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
                 let dt = (primary[0].total_ps() as i32 - primary[1].total_ps() as i32).abs();
                 let pol_ok = primary[0].final_pol == primary[1].final_pol;
                 if dt == 0 && pol_ok && !primary[0].blocked && !primary[1].blocked {
-                    parts.push("SYNC: 0ps ✓".to_string());
+                    parts.push("SYNC: 0ps OK".to_string());
                     pill_col = ACCENT_GREEN;
                 } else {
                     parts.push(format!("Δt:{dt}ps{}", if pol_ok { "" } else { " POL!" }));

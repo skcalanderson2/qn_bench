@@ -60,10 +60,10 @@ impl Dir {
 
     pub fn arrow(self) -> &'static str {
         match self {
-            Dir::Right => "→",
-            Dir::Down => "↓",
-            Dir::Left => "←",
-            Dir::Up => "↑",
+            Dir::Right => ">",
+            Dir::Down => "v",
+            Dir::Left => "<",
+            Dir::Up => "^",
         }
     }
 
