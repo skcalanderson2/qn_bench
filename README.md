@@ -59,6 +59,8 @@ trunk serve --public-url /
 * **S** — Toggle **Interactive Free-Build Sandbox Mode** (unlimited optics, channels, rotatable emitters, EPR/QKD labs, & JSON blueprint sharing)
 * **Q / E** — Rotate emitter aim direction in Sandbox Mode
 * **P** — Pause / resume simulation (use `0.5x` / `1x` / `2x` pill to adjust speed)
+* **`.` (Period)** — **Single-Step (`+5ps`) Frame Debugger** (advances exactly 1 frame while paused to inspect photon states tile by tile)
+* **G** — Open **Quantum Lab Report** (1–3 Star Efficiency Ratings across all 20 levels + one-click Copy Markdown Report)
 * **R** — Reset current level (or stop/reset beam in Sandbox Mode)
 * **H** — Open Experiment Briefing (or Sandbox Templates / JSON Blueprints modal)
 * **K** — Open QKD & AES-256 Inspector (on Levels 12–14, 16, or Sandbox QKD benches)

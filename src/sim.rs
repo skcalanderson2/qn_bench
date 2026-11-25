@@ -203,6 +203,8 @@ pub struct BenchSim {
     pub particles: Vec<Particle>,
     pub shockwaves: Vec<Shockwave>,
     pub completed_levels: HashSet<usize>,
+    pub level_stars: BTreeMap<usize, u8>,
+    pub last_earned_stars: Option<u8>,
     pub seen_briefings: HashSet<usize>,
     pub tick: u32,
     pub frame: u64,
@@ -256,6 +258,8 @@ impl BenchSim {
             particles: Vec::new(),
             shockwaves: Vec::new(),
             completed_levels: HashSet::new(),
+            level_stars: BTreeMap::new(),
+            last_earned_stars: None,
             seen_briefings: HashSet::new(),
             tick: 0,
             frame: 0,
@@ -604,6 +608,7 @@ impl BenchSim {
         self.status_msg = self.sandbox_level.goal.to_string();
         self.status_color = TEXT_WHITE;
         self.level_complete = false;
+        self.last_earned_stars = None;
         self.sim_active = false;
         self.paused = false;
     }
@@ -858,6 +863,7 @@ impl BenchSim {
         self.status_msg = lvl.goal.to_string();
         self.status_color = TEXT_WHITE;
         self.level_complete = false;
+        self.last_earned_stars = None;
         self.sim_active = false;
         self.paused = false;
     }
@@ -980,6 +986,7 @@ impl BenchSim {
             self.sim_active = true;
             self.sim_state = SimState::Active;
             self.level_complete = false;
+            self.last_earned_stars = None;
             let proto = if lvl.mode == TargetMode::QkdBb84 {
                 "BB84 polarized qubits"
             } else {
@@ -1019,6 +1026,7 @@ impl BenchSim {
         self.sim_active = true;
         self.sim_state = SimState::Active;
         self.level_complete = false;
+        self.last_earned_stars = None;
         self.status_msg = format!(
             "Firing {} single photon(s) from Quantum Emitter(s)...",
             wl_tags.join("/")
@@ -1078,6 +1086,91 @@ impl BenchSim {
                 }
             }
         }
+    }
+
+    /// Single-step frame debugger: advances the active simulation by exactly 1 frame (+5ps)
+    /// and leaves it paused so students can inspect photon states tile by tile.
+    pub fn step_one_paused_frame(&mut self) {
+        if !self.sim_active {
+            return;
+        }
+        self.paused = false;
+        self.step_frame();
+        if self.sim_active {
+            self.paused = true;
+        }
+    }
+
+    pub fn total_stars(&self) -> u32 {
+        self.level_stars.values().map(|&s| s as u32).sum()
+    }
+
+    fn record_level_victory(&mut self) {
+        if self.sandbox_mode {
+            return;
+        }
+        let idx = self.level_idx;
+        self.completed_levels.insert(idx);
+        let par = crate::levels::level_par_components(idx);
+        let optimal_parts = self.user_placed.len() <= par;
+        let no_hints = self.hint_tier == 0;
+        let stars: u8 = 1 + u8::from(optimal_parts) + u8::from(no_hints);
+        self.last_earned_stars = Some(stars);
+        let entry = self.level_stars.entry(idx).or_insert(0);
+        *entry = (*entry).max(stars);
+    }
+
+    /// Generate a structured Markdown Lab Report summarizing campaign completion,
+    /// efficiency star ratings, and latest QKD / AES-256 session metrics.
+    pub fn build_lab_report_markdown(&self) -> String {
+        use std::fmt::Write;
+        let total = self.levels.len();
+        let done = self.completed_levels.len();
+        let stars = self.total_stars();
+        let max_stars = (total * 3) as u32;
+        let mut out = String::new();
+        let _ = writeln!(out, "# QN Bench — Quantum Networking Lab Report");
+        let _ = writeln!(out);
+        let _ = writeln!(out, "- **App Version:** v{}", crate::version::APP_VERSION);
+        let _ = writeln!(out, "- **Campaign Progress:** {done} / {total} Levels Completed");
+        let _ = writeln!(out, "- **Mastery Rating:** {stars} / {max_stars} Stars (1*: Solved, 2*: Optimal Parts OR No Hints, 3*: Optimal Parts + No Hints)");
+        let _ = writeln!(out);
+        let _ = writeln!(out, "| # | Experiment | Status | Rating | Par Optics |");
+        let _ = writeln!(out, "|---:|---|---|---|---:|");
+        for (i, lvl) in self.levels.iter().enumerate() {
+            let is_done = self.completed_levels.contains(&i);
+            let s = self.level_stars.get(&i).copied().unwrap_or(if is_done { 1 } else { 0 });
+            let rating = match s {
+                3 => "*** (3/3 Optimal)",
+                2 => "** (2/3)",
+                1 => "* (1/3)",
+                _ => "-",
+            };
+            let status = if is_done { "LOCKED" } else { "Pending" };
+            let par = crate::levels::level_par_components(i);
+            let _ = writeln!(out, "| {} | {} | {} | {} | {} |", i + 1, lvl.title, status, rating, par);
+        }
+        if let Some(qs) = &self.qkd_session {
+            if !qs.rounds.is_empty() {
+                let _ = writeln!(out);
+                let _ = writeln!(out, "## Latest QKD & AES-256 Session");
+                let proto = if qs.protocol == TargetMode::QkdE91 { "E91 / BBM92 Entangled QKD" } else { "BB84 Prepare-and-Measure QKD" };
+                let _ = writeln!(out, "- **Protocol:** {proto}");
+                let _ = writeln!(out, "- **Sifted Bits:** {} (from {} received rounds)", qs.sifted_alice.len(), qs.rounds.len());
+                let _ = writeln!(out, "- **QBER:** {:.1}% (Threshold <= 11.0%)", qs.qber * 100.0);
+                if let Some(s) = qs.chsh_s {
+                    let _ = writeln!(out, "- **Bell CHSH S:** {s:.2} (Quantum Bound > 2.00)");
+                }
+                let verdict = match qs.verdict {
+                    QkdVerdict::Secure => "SECURE — FIPS-197 AES-256 Key Derived",
+                    QkdVerdict::AbortEve => "ABORTED — Eavesdropper / Basis Mismatch Detected",
+                    QkdVerdict::AbortNoKey => "ABORTED — Insufficient Sifted Bits",
+                    _ => "In Progress",
+                };
+                let _ = writeln!(out, "- **Verdict:** {verdict}");
+            }
+        }
+        out
     }
 
     pub fn step_frame(&mut self) {
@@ -1818,9 +1911,7 @@ impl BenchSim {
                 self.status_color = ACCENT_GREEN;
                 self.sim_state = SimState::Locked;
                 self.level_complete = true;
-                if !self.sandbox_mode {
-                    self.completed_levels.insert(self.level_idx);
-                }
+                self.record_level_victory();
                 self.pending_sfx.push(SfxEvent::AesLock);
                 for (tx, ty) in lvl.target_coords() {
                     self.spawn_fx(
@@ -1902,9 +1993,7 @@ impl BenchSim {
             self.status_color = ACCENT_GREEN;
             self.sim_state = SimState::Locked;
             self.level_complete = true;
-            if !self.sandbox_mode {
-                self.completed_levels.insert(self.level_idx);
-            }
+            self.record_level_victory();
             self.pending_sfx.push(SfxEvent::BsmOk);
             self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 28);
             self.spawn_fx("ring", tcx, tcy, ACCENT_PURPLE, 18);
@@ -1921,9 +2010,7 @@ impl BenchSim {
             self.status_color = ACCENT_GREEN;
             self.sim_state = SimState::Locked;
             self.level_complete = true;
-            if !self.sandbox_mode {
-                self.completed_levels.insert(self.level_idx);
-            }
+            self.record_level_victory();
             self.pending_sfx.push(SfxEvent::BsmOk);
             self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 26);
             return;
@@ -1945,9 +2032,7 @@ impl BenchSim {
                 self.status_color = ACCENT_GREEN;
                 self.sim_state = SimState::Locked;
                 self.level_complete = true;
-                if !self.sandbox_mode {
-                    self.completed_levels.insert(self.level_idx);
-                }
+                self.record_level_victory();
                 self.pending_sfx.push(SfxEvent::SnspdOk);
                 self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 20);
                 return;
@@ -1969,9 +2054,7 @@ impl BenchSim {
                 self.status_color = ACCENT_GREEN;
                 self.sim_state = SimState::Locked;
                 self.level_complete = true;
-                if !self.sandbox_mode {
-                    self.completed_levels.insert(self.level_idx);
-                }
+                self.record_level_victory();
                 self.pending_sfx.push(SfxEvent::SnspdOk);
                 self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 20);
             }
@@ -2021,9 +2104,7 @@ impl BenchSim {
                     self.status_color = ACCENT_GREEN;
                     self.sim_state = SimState::Locked;
                     self.level_complete = true;
-                    if !self.sandbox_mode {
-                        self.completed_levels.insert(self.level_idx);
-                    }
+                    self.record_level_victory();
                     self.pending_sfx.push(SfxEvent::BsmOk);
                     self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 28);
                 }
@@ -2521,5 +2602,86 @@ mod tests {
         .expect("raw JSON decode");
         assert_eq!(decoded_json, bp);
         assert!(SandboxBlueprint::from_share_str("#bp=!!!invalid!!!").is_err());
+    }
+
+    #[test]
+    fn classroom_frame_debugger_stars_and_lab_report() {
+        use Placeable::*;
+        let mut sim = BenchSim::new();
+        sim.load_level(0); // Level 1 (Par = 2)
+        sim.selected = Some(Qfc);
+        assert!(sim.place_component(2, 2));
+        sim.selected = Some(Vbg);
+        assert!(sim.place_component(3, 2));
+
+        // 1. Single-Step (+5ps) Frame Debugger advances exactly 1 tick and stays paused
+        sim.fire_photons();
+        assert!(sim.sim_active);
+        assert!(!sim.paused);
+        assert_eq!(sim.tick, 0);
+        sim.step_one_paused_frame();
+        assert_eq!(sim.tick, 1);
+        assert!(sim.paused);
+        sim.step_one_paused_frame();
+        assert_eq!(sim.tick, 2);
+        assert!(sim.paused);
+
+        // Resume and finish solving Level 1 with zero hints & <= par (2) -> 3 Stars!
+        sim.paused = false;
+        for _ in 0..400 {
+            sim.step_frame();
+            if !sim.sim_active {
+                break;
+            }
+        }
+        assert_eq!(sim.sim_state, SimState::Locked);
+        assert_eq!(sim.last_earned_stars, Some(3));
+        assert_eq!(sim.level_stars.get(&0).copied(), Some(3));
+        assert_eq!(sim.total_stars(), 3);
+
+        // 2. Solving Level 2 with a hint opened + optimal parts (4) -> 2 Stars
+        sim.load_level(1); // Par = 4
+        sim.hint_tier = 1;
+        for &(c, x, y) in &[(Qfc, 1, 1), (Vbg, 2, 1), (MirrorBack, 3, 1), (MirrorBack, 3, 4)] {
+            sim.selected = Some(c);
+            assert!(sim.place_component(x, y));
+        }
+        sim.fire_photons();
+        for _ in 0..400 {
+            sim.step_frame();
+            if !sim.sim_active {
+                break;
+            }
+        }
+        assert_eq!(sim.sim_state, SimState::Locked);
+        assert_eq!(sim.last_earned_stars, Some(2));
+        assert_eq!(sim.level_stars.get(&1).copied(), Some(2));
+        assert_eq!(sim.total_stars(), 5);
+
+        // 3. Re-solving Level 1 with a hint preserves the previous 3-Star best score
+        sim.load_level(0);
+        sim.hint_tier = 2;
+        sim.selected = Some(Qfc);
+        assert!(sim.place_component(2, 2));
+        sim.selected = Some(Vbg);
+        assert!(sim.place_component(3, 2));
+        sim.fire_photons();
+        for _ in 0..400 {
+            sim.step_frame();
+            if !sim.sim_active {
+                break;
+            }
+        }
+        assert_eq!(sim.last_earned_stars, Some(2));
+        assert_eq!(sim.level_stars.get(&0).copied(), Some(3));
+
+        // 4. Lab Report Markdown includes completion counts, star ratings, and all 20 levels
+        let md = sim.build_lab_report_markdown();
+        assert!(md.contains("2 / 20 Levels Completed"));
+        assert!(md.contains("5 / 60 Stars"));
+        assert!(md.contains("Level 1: The Wavelength Barrier"));
+        assert!(md.contains("Level 20: Quantum Teleportation"));
+        assert!(md.contains("*** (3/3 Optimal)"));
+        assert!(md.contains("** (2/3)"));
     }
 }

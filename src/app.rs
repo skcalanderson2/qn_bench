@@ -27,6 +27,8 @@ struct PersistedState {
     #[serde(default)]
     completed_levels: Vec<usize>,
     #[serde(default)]
+    level_stars: std::collections::BTreeMap<usize, u8>,
+    #[serde(default)]
     muted: bool,
     #[serde(default)]
     sandbox_bp: Option<SandboxBlueprint>,
@@ -38,6 +40,7 @@ impl Default for PersistedState {
     fn default() -> Self {
         Self {
             completed_levels: Vec::new(),
+            level_stars: std::collections::BTreeMap::new(),
             muted: false,
             sandbox_bp: None,
             align_laser: true,
@@ -74,6 +77,13 @@ impl QnBenchApp {
         for idx in saved.completed_levels {
             if idx < sim.levels.len() {
                 sim.completed_levels.insert(idx);
+                sim.level_stars.entry(idx).or_insert(1);
+            }
+        }
+        for (idx, stars) in saved.level_stars {
+            if idx < sim.levels.len() && stars > 0 {
+                sim.completed_levels.insert(idx);
+                sim.level_stars.insert(idx, stars.min(3));
             }
         }
         if let Some(bp) = saved.sandbox_bp {
@@ -185,7 +195,7 @@ impl QnBenchApp {
             return;
         }
 
-        let (fire, reset, pause, help, hint_i, align_l, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
+        let (fire, reset, pause, step_dot, help, hint_i, align_l, report_g, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
             let mut jump = None;
             let num_keys = [
                 Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
@@ -209,9 +219,11 @@ impl QnBenchApp {
                 i.key_pressed(Key::Space),
                 !cmd && i.key_pressed(Key::R),
                 i.key_pressed(Key::P),
+                i.key_pressed(Key::Period),
                 i.key_pressed(Key::H),
                 i.key_pressed(Key::I),
                 i.key_pressed(Key::L),
+                !cmd && i.key_pressed(Key::G),
                 undo,
                 redo,
                 i.key_pressed(Key::Enter),
@@ -231,6 +243,13 @@ impl QnBenchApp {
             self.sim.undo();
         } else if redo_k {
             self.sim.redo();
+        } else if step_dot && self.sim.sim_active {
+            self.sim.step_one_paused_frame();
+            self.sfx.play(SfxEvent::Select);
+        } else if report_g {
+            self.sim.sandbox_json_msg = None;
+            self.overlay = Overlay::LabReport;
+            self.sfx.play(SfxEvent::Select);
         } else if align_l {
             self.sim.align_laser = !self.sim.align_laser;
             self.sfx.play(SfxEvent::Select);
@@ -313,6 +332,7 @@ impl eframe::App for QnBenchApp {
         completed.sort_unstable();
         let state = PersistedState {
             completed_levels: completed,
+            level_stars: self.sim.level_stars.clone(),
             muted: self.sfx.muted,
             sandbox_bp: Some(self.sim.sandbox_bp.clone()),
             align_laser: self.sim.align_laser,
@@ -777,6 +797,11 @@ impl eframe::App for QnBenchApp {
                 if action.open_hint && !self.sim.sandbox_mode {
                     self.sim.hint_tier = self.sim.hint_tier.max(1);
                     self.overlay = Overlay::Level(self.sim.level_idx);
+                    self.sfx.play(SfxEvent::Select);
+                }
+                if action.open_lab_report {
+                    self.sim.sandbox_json_msg = None;
+                    self.overlay = Overlay::LabReport;
                     self.sfx.play(SfxEvent::Select);
                 }
             });

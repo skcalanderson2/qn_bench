@@ -779,5 +779,6 @@ pub enum Overlay {
     Comp(&'static str),
     QkdAes,
     SandboxShare,
+    LabReport,
     Update,
 }

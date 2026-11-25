@@ -535,6 +535,121 @@ pub fn draw_modal_overlay(
                 sim.pending_sfx.push(SfxEvent::Select);
             }
         }
+        Overlay::LabReport => {
+            let mut close = false;
+            let total = sim.levels.len();
+            let done = sim.completed_levels.len();
+            let stars = sim.total_stars();
+            let max_stars = (total * 3) as u32;
+            egui::Window::new("quantum_lab_report")
+                .title_bar(false)
+                .resizable(false)
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .min_width(700.0f32.min(screen.width() - 32.0))
+                .max_width(700.0f32.min(screen.width() - 32.0))
+                .frame(modal_frame(ACCENT_AMBER))
+                .show(ctx, |ui| {
+                    ui.label(RichText::new("CLASSROOM TELEMETRY  •  MASTERY & EFFICIENCY RATINGS").strong().size(11.0).color(ACCENT_AMBER));
+                    ui.label(RichText::new("Quantum Networking Lab Report").strong().size(18.0).color(TEXT_WHITE));
+                    ui.separator();
+                    ui.add_space(6.0);
+
+                    ui.columns(3, |cols| {
+                        stat_box(&mut cols[0], "CAMPAIGN PROGRESS", &format!("{done} / {total} Levels"), if done == total { ACCENT_GREEN } else { ACCENT_CYAN });
+                        stat_box(&mut cols[1], "EFFICIENCY STARS", &format!("{stars} / {max_stars} Stars"), ACCENT_AMBER);
+                        let pct = if max_stars > 0 { (stars as f32 / max_stars as f32) * 100.0 } else { 0.0 };
+                        stat_box(&mut cols[2], "MASTERY SCORE", &format!("{pct:.0}%"), if pct >= 85.0 { ACCENT_GREEN } else { ACCENT_PURPLE });
+                    });
+                    ui.add_space(6.0);
+                    ui.label(
+                        RichText::new("Rating Criteria:  1* Solved  •  2* Optimal Optics (<= Par) OR Zero Hints  •  3* Optimal Optics AND Zero Hints")
+                            .size(11.0)
+                            .color(TEXT_MUTED),
+                    );
+                    ui.add_space(6.0);
+
+                    egui::Frame::NONE
+                        .fill(Color32::from_rgb(11, 16, 25))
+                        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(36, 48, 66)))
+                        .corner_radius(CornerRadius::same(7))
+                        .inner_margin(egui::Margin::symmetric(10, 8))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            egui::ScrollArea::vertical()
+                                .max_height(265.0)
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| {
+                                    for (i, lvl) in sim.levels.iter().enumerate() {
+                                        let is_done = sim.completed_levels.contains(&i);
+                                        let s = sim.level_stars.get(&i).copied().unwrap_or(if is_done { 1 } else { 0 });
+                                        let par = crate::levels::level_par_components(i);
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                RichText::new(format!("{:02}", i + 1))
+                                                    .monospace()
+                                                    .strong()
+                                                    .size(11.5)
+                                                    .color(if is_done { ACCENT_GREEN } else { TEXT_MUTED }),
+                                            );
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(lvl.title)
+                                                        .size(12.0)
+                                                        .color(if is_done { TEXT_WHITE } else { TEXT_MUTED }),
+                                                )
+                                                .truncate(),
+                                            );
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                draw_star_trio(ui, s);
+                                                ui.add_space(8.0);
+                                                let st_lbl = if is_done { "LOCKED" } else { "PENDING" };
+                                                let st_col = if is_done { ACCENT_GREEN } else { Color32::from_rgb(80, 94, 114) };
+                                                ui.label(RichText::new(st_lbl).strong().size(10.0).color(st_col));
+                                                ui.add_space(8.0);
+                                                ui.label(RichText::new(format!("Par: {par}")).monospace().size(10.5).color(TEXT_MUTED));
+                                            });
+                                        });
+                                        if i + 1 < total {
+                                            ui.separator();
+                                        }
+                                    }
+                                });
+                        });
+
+                    if let Some((msg, col)) = &sim.sandbox_json_msg {
+                        ui.add_space(6.0);
+                        ui.label(RichText::new(msg).size(12.0).color(*col));
+                    }
+
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        let copy_btn = egui::Button::new(RichText::new("COPY MARKDOWN REPORT").strong().size(12.5).color(BG_DARK))
+                            .fill(ACCENT_AMBER)
+                            .min_size(Vec2::new(210.0, 34.0));
+                        if ui.add(copy_btn).clicked() {
+                            let md = sim.build_lab_report_markdown();
+                            ctx.copy_text(md);
+                            sim.sandbox_json_msg = Some(("Copied Markdown Quantum Lab Report to clipboard!".to_string(), ACCENT_GREEN));
+                            sim.pending_sfx.push(SfxEvent::Select);
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let cls = egui::Button::new(RichText::new("CLOSE  [ESC]").strong().size(12.5).color(TEXT_WHITE))
+                                .fill(PANEL_BG)
+                                .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                                .min_size(Vec2::new(125.0, 34.0));
+                            if ui.add(cls).clicked() {
+                                close = true;
+                            }
+                        });
+                    });
+                });
+            if close {
+                *overlay = Overlay::None;
+                sim.sandbox_json_msg = None;
+                sim.pending_sfx.push(SfxEvent::Select);
+            }
+        }
         Overlay::Update => {
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -703,6 +818,35 @@ fn spec_section(ui: &mut Ui, heading: &str, col: Color32, body: &str, body_col: 
     ui.label(RichText::new(heading).strong().size(11.0).color(col));
     ui.label(RichText::new(body).size(13.0).color(body_col));
     ui.add_space(10.0);
+}
+
+fn draw_star_trio(ui: &mut Ui, earned: u8) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 16.0), egui::Sense::hover());
+    let p = ui.painter();
+    for idx in 0..3u8 {
+        let cx = rect.left() + 8.0 + idx as f32 * 18.0;
+        let cy = rect.center().y;
+        let filled = idx < earned;
+        let col = if filled { ACCENT_AMBER } else { Color32::from_rgb(42, 52, 70) };
+        let r_out = 6.5f32;
+        let r_in = 2.8f32;
+        let mut pts = Vec::with_capacity(10);
+        for k in 0..10 {
+            let angle = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 5.0;
+            let r = if k % 2 == 0 { r_out } else { r_in };
+            pts.push(egui::Pos2::new(cx + r * angle.cos(), cy + r * angle.sin()));
+        }
+        p.add(egui::Shape::closed_line(pts.clone(), Stroke::new(1.2_f32, col)));
+        if filled {
+            // Paint 5 triangular star petals from center for crisp concave fill
+            let center = egui::Pos2::new(cx, cy);
+            for k in 0..10 {
+                let a = pts[k];
+                let b = pts[(k + 1) % 10];
+                p.add(egui::Shape::convex_polygon(vec![center, a, b], col, Stroke::NONE));
+            }
+        }
+    }
 }
 
 fn stat_box(ui: &mut Ui, label: &str, val: &str, col: Color32) {

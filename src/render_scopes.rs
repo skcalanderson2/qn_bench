@@ -10,6 +10,7 @@ pub struct DeckAction {
     pub toggle_sandbox: bool,
     pub open_qkd_inspector: bool,
     pub open_hint: bool,
+    pub open_lab_report: bool,
 }
 
 fn draw_dashed_hline(p: &Painter, x1: f32, x2: f32, y: f32, color: Color32) {
@@ -44,6 +45,7 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
         toggle_sandbox: false,
         open_qkd_inspector: false,
         open_hint: false,
+        open_lab_report: false,
     };
     let header_title = if sim.sandbox_mode {
         format!("SANDBOX: {}", sim.sandbox_bp.name)
@@ -77,6 +79,26 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
                     .color(TEXT_MUTED),
             );
 
+            // Single-Step (+5ps) Frame Debugger button
+            let step_enabled = sim.sim_active;
+            let step_btn = egui::Button::new(
+                egui::RichText::new("+5ps")
+                    .strong()
+                    .size(9.5)
+                    .color(if step_enabled { ACCENT_CYAN } else { Color32::from_rgb(64, 76, 94) }),
+            )
+            .fill(if step_enabled && sim.paused { Color32::from_rgb(18, 42, 54) } else { Color32::from_rgb(20, 28, 40) })
+            .stroke(Stroke::new(1.0_f32, if step_enabled { ACCENT_CYAN } else { Color32::from_rgb(28, 34, 46) }))
+            .min_size(Vec2::new(34.0, 20.0));
+            if ui
+                .add_enabled(step_enabled, step_btn)
+                .on_hover_text("Single-step frame debugger (+5ps per click) [.]")
+                .clicked()
+            {
+                sim.step_one_paused_frame();
+                sim.pending_sfx.push(crate::sim::SfxEvent::Select);
+            }
+
             // Pause & Speed controls
             let pause_txt = if sim.paused { "▶" } else { "⏸" };
             let pause_btn = egui::Button::new(egui::RichText::new(pause_txt).size(10.5).color(if sim.paused { ACCENT_AMBER } else { TEXT_WHITE }))
@@ -108,6 +130,19 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
                 };
             }
 
+            // Quantum Lab Report + Stars pill
+            let total_stars = sim.total_stars();
+            let max_stars = (total_levels * 3) as u32;
+            let rep_lbl = format!("REPORT {total_stars}/{max_stars}*");
+            let rep_btn = egui::Button::new(egui::RichText::new(rep_lbl).strong().size(9.5).color(ACCENT_AMBER))
+                .fill(Color32::from_rgb(32, 26, 18))
+                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(135, 102, 36)))
+                .corner_radius(CornerRadius::same(4))
+                .min_size(Vec2::new(82.0, 20.0));
+            if ui.add(rep_btn).on_hover_text("Open Quantum Lab Report & Star Ratings [G]").clicked() {
+                action.open_lab_report = true;
+            }
+
             // Title occupies remaining left space cleanly without overflow
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.add(egui::Label::new(egui::RichText::new(header_title).strong().size(14.5).color(header_col)).truncate());
@@ -125,15 +160,37 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
         for i in 0..total_levels {
             let is_cur = !sim.sandbox_mode && i == sim.level_idx;
             let is_done = sim.completed_levels.contains(&i);
+            let stars = sim.level_stars.get(&i).copied().unwrap_or(if is_done { 1 } else { 0 });
             let bg = if is_cur { Color32::from_rgb(36, 56, 78) } else { Color32::from_rgb(18, 24, 34) };
-            let bd = if is_cur { ACCENT_CYAN } else if is_done { ACCENT_GREEN } else { GRID_LINE };
-            let fg = if is_cur { TEXT_WHITE } else if is_done { ACCENT_GREEN } else { TEXT_MUTED };
+            let bd = if is_cur {
+                ACCENT_CYAN
+            } else if stars >= 3 {
+                ACCENT_AMBER
+            } else if is_done {
+                ACCENT_GREEN
+            } else {
+                GRID_LINE
+            };
+            let fg = if is_cur {
+                TEXT_WHITE
+            } else if stars >= 3 {
+                ACCENT_AMBER
+            } else if is_done {
+                ACCENT_GREEN
+            } else {
+                TEXT_MUTED
+            };
             let btn = egui::Button::new(egui::RichText::new(format!("{}", i + 1)).strong().size(if narrow { 8.5 } else { 9.5 }).color(fg))
                 .fill(bg)
                 .stroke(Stroke::new(1.0_f32, bd))
                 .corner_radius(CornerRadius::same(4))
                 .min_size(Vec2::new(pill_w, 20.0));
-            if ui.add(btn).on_hover_text(sim.levels[i].title).clicked() {
+            let hover_txt = if is_done {
+                format!("{}  ({}/3 Stars)", sim.levels[i].title, stars)
+            } else {
+                sim.levels[i].title.to_string()
+            };
+            if ui.add(btn).on_hover_text(hover_txt).clicked() {
                 action.jump_level = Some(i);
             }
         }
@@ -226,10 +283,20 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
         .inner_margin(egui::Margin::symmetric(8, 3))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.add(
-                egui::Label::new(egui::RichText::new(&sim.status_msg).size(12.0).color(sim.status_color))
-                    .truncate(),
-            );
+            ui.horizontal(|ui| {
+                if let Some(stars) = sim.last_earned_stars {
+                    let tag = match stars {
+                        3 => "[*** 3/3 OPTIMAL]",
+                        2 => "[** 2/3]",
+                        _ => "[* 1/3]",
+                    };
+                    ui.label(egui::RichText::new(tag).strong().size(11.5).color(ACCENT_AMBER));
+                }
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&sim.status_msg).size(12.0).color(sim.status_color))
+                        .truncate(),
+                );
+            });
         });
 
     ui.add_space(5.0);

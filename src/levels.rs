@@ -23,6 +23,33 @@ pub fn hardware_doc(key: &str) -> Option<&'static HardwareDoc> {
     HARDWARE_DOCS.iter().find(|d| d.key == key)
 }
 
+/// Optimal (par) user-placed component count for each campaign level (0-indexed).
+pub fn level_par_components(idx: usize) -> usize {
+    const PAR: [usize; 20] = [
+        2,  // L1: QFC, VBG
+        4,  // L2: QFC, VBG, 2x MirrorBack
+        3,  // L3: QFC, Memory, VBG
+        7,  // L4: 2x QFC, 2x VBG, Delay, /, \
+        8,  // L5: 2x QFC, 2x VBG, Memory, Delay, /, \
+        6,  // L6: 2x QFC, VBG, Delay, 2x \
+        3,  // L7: QFC, 2x VBG
+        8,  // L8: 2x QFC, 2x VBG, HWP, Delay, /, \
+        7,  // L9: 2x QFC, 2x VBG, Delay, /, \
+        8,  // L10: 2x QFC, 3x VBG, Delay, /, \
+        5,  // L11: QFC, VBG, AO, 2x \
+        3,  // L12: QFC, VBG, HWP
+        5,  // L13: 2x QFC, 2x VBG, HWP
+        7,  // L14: 2x QFC, 2x VBG, /, 2x \
+        13, // L15: 2x QFC, 4x VBG, Memory, Delay, HWP, 3x /, \
+        12, // L16: 2x QFC, 2x VBG, 2x AO, HWP, 3x /, 2x \
+        3,  // L17: QFC, VBG, DCF
+        6,  // L18: 2x QFC, 2x VBG, Delay, WDM
+        9,  // L19: 2x QFC, 2x VBG, 2x DCF, Delay, /, \
+        12, // L20: 3x QFC, 3x VBG, DCF, HWP, 3x /, \
+    ];
+    PAR.get(idx).copied().unwrap_or(8)
+}
+
 pub const HARDWARE_DOCS: &[HardwareDoc] = &[
     HardwareDoc {
         key: "QFC",
