@@ -34,6 +34,8 @@ struct PersistedState {
     sandbox_bp: Option<SandboxBlueprint>,
     #[serde(default = "default_true")]
     align_laser: bool,
+    #[serde(default)]
+    colorblind_mode: bool,
 }
 
 impl Default for PersistedState {
@@ -44,6 +46,7 @@ impl Default for PersistedState {
             muted: false,
             sandbox_bp: None,
             align_laser: true,
+            colorblind_mode: false,
         }
     }
 }
@@ -90,6 +93,7 @@ impl QnBenchApp {
             let _ = sim.load_sandbox_blueprint(bp);
         }
         sim.align_laser = saved.align_laser;
+        sim.colorblind_mode = saved.colorblind_mode;
         sim.seen_briefings.insert(0);
 
         #[allow(unused_mut)]
@@ -195,7 +199,7 @@ impl QnBenchApp {
             return;
         }
 
-        let (fire, reset, pause, step_dot, help, hint_i, align_l, report_g, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
+        let (fire, reset, pause, step_dot, help, hint_i, align_l, report_g, erase_x, a11y_c, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
             let mut jump = None;
             let num_keys = [
                 Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
@@ -224,6 +228,8 @@ impl QnBenchApp {
                 i.key_pressed(Key::I),
                 i.key_pressed(Key::L),
                 !cmd && i.key_pressed(Key::G),
+                !cmd && i.key_pressed(Key::X),
+                !cmd && i.key_pressed(Key::C),
                 undo,
                 redo,
                 i.key_pressed(Key::Enter),
@@ -249,6 +255,12 @@ impl QnBenchApp {
         } else if report_g {
             self.sim.sandbox_json_msg = None;
             self.overlay = Overlay::LabReport;
+            self.sfx.play(SfxEvent::Select);
+        } else if erase_x {
+            self.sim.erase_mode = !self.sim.erase_mode;
+            self.sfx.play(SfxEvent::Select);
+        } else if a11y_c {
+            self.sim.colorblind_mode = !self.sim.colorblind_mode;
             self.sfx.play(SfxEvent::Select);
         } else if align_l {
             self.sim.align_laser = !self.sim.align_laser;
@@ -336,6 +348,7 @@ impl eframe::App for QnBenchApp {
             muted: self.sfx.muted,
             sandbox_bp: Some(self.sim.sandbox_bp.clone()),
             align_laser: self.sim.align_laser,
+            colorblind_mode: self.sim.colorblind_mode,
         };
         eframe::set_value(storage, STORAGE_KEY, &state);
     }
@@ -453,9 +466,55 @@ impl eframe::App for QnBenchApp {
                     });
                 });
 
+                // Touch & Accessibility Mode Bar: ERASE [X] + A11Y COLORBLIND [C]
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    let half_w = (ui.available_width() - 6.0) * 0.5;
+                    let er_on = self.sim.erase_mode;
+                    let er_btn = egui::Button::new(
+                        RichText::new(if er_on { "ERASE: ON [X]" } else { "ERASE TOOL [X]" })
+                            .strong()
+                            .size(10.5)
+                            .color(if er_on { TEXT_WHITE } else { ACCENT_RED }),
+                    )
+                    .fill(if er_on { ACCENT_RED } else { Color32::from_rgb(38, 20, 26) })
+                    .stroke(Stroke::new(1.0_f32, ACCENT_RED))
+                    .corner_radius(CornerRadius::same(5))
+                    .min_size(Vec2::new(half_w, 24.0));
+                    if ui
+                        .add(er_btn)
+                        .on_hover_text("Toggle Touch/Tap Erase Mode [X] — Left-Click or tap any placed optic to remove it")
+                        .clicked()
+                    {
+                        self.sim.erase_mode = !self.sim.erase_mode;
+                        self.sfx.play(SfxEvent::Select);
+                    }
+
+                    let cb_on = self.sim.colorblind_mode;
+                    let cb_btn = egui::Button::new(
+                        RichText::new(if cb_on { "A11Y: ON [C]" } else { "A11Y PATTERNS [C]" })
+                            .strong()
+                            .size(10.5)
+                            .color(if cb_on { BG_DARK } else { ACCENT_CYAN }),
+                    )
+                    .fill(if cb_on { ACCENT_CYAN } else { Color32::from_rgb(18, 30, 42) })
+                    .stroke(Stroke::new(1.0_f32, if cb_on { ACCENT_CYAN } else { GRID_LINE }))
+                    .corner_radius(CornerRadius::same(5))
+                    .min_size(Vec2::new(half_w, 24.0));
+                    if ui
+                        .add(cb_btn)
+                        .on_hover_text("Toggle Colorblind-Friendly / High-Contrast Wavelength Shapes & Badges [C]")
+                        .clicked()
+                    {
+                        self.sim.colorblind_mode = !self.sim.colorblind_mode;
+                        self.sfx.play(SfxEvent::Select);
+                    }
+                });
+                ui.add_space(4.0);
+
                 if self.sim.sandbox_mode {
-                    ui.label(RichText::new("L-Click: Place / Rotate  |  R-Click: Erase").size(11.5).color(TEXT_MUTED));
-                    ui.add_space(6.0);
+                    ui.label(RichText::new("Tap: Place / Rotate  |  [X] Erase  |  R-Click: Erase").size(11.0).color(TEXT_MUTED));
+                    ui.add_space(5.0);
 
                     // Sandbox Category Tabs: OPTICS | CHANNELS | SOURCES
                     ui.horizontal(|ui| {
@@ -521,7 +580,7 @@ impl eframe::App for QnBenchApp {
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
                             for (idx, &tool) in tools.iter().enumerate() {
-                                let is_sel = self.sim.sandbox_tool == tool;
+                                let is_sel = !self.sim.erase_mode && self.sim.sandbox_tool == tool;
                                 let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
                                 let bd = if is_sel { tool.color() } else { GRID_LINE };
 
@@ -555,14 +614,15 @@ impl eframe::App for QnBenchApp {
                                 let card_click = ui.interact(frame_resp.rect, ui.id().with(("sb_card", idx)), egui::Sense::click());
                                 if card_click.clicked() && self.overlay == Overlay::None {
                                     self.sim.sandbox_tool = tool;
+                                    self.sim.erase_mode = false;
                                     self.sfx.play(SfxEvent::Select);
                                 }
                                 ui.add_space(5.0);
                             }
                         });
                 } else {
-                    ui.label(RichText::new("L-Click: Place  |  R-Click: Remove").size(12.0).color(TEXT_MUTED));
-                    ui.add_space(10.0);
+                    ui.label(RichText::new("Tap: Place  |  [X] Erase  |  R-Click: Remove").size(11.5).color(TEXT_MUTED));
+                    ui.add_space(6.0);
 
                     // Component Cards (scrollable on smaller windows so bottom buttons never clip)
                     let cards_max_h = (ui.available_height() - 196.0).max(80.0);
@@ -574,7 +634,7 @@ impl eframe::App for QnBenchApp {
                             let active = self.sim.active_components();
                             for comp in active {
                                 let count = self.sim.inventory.get(&comp).copied().unwrap_or(0);
-                                let is_sel = self.sim.selected == Some(comp) && count > 0;
+                                let is_sel = !self.sim.erase_mode && self.sim.selected == Some(comp) && count > 0;
                                 let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
                                 let bd = if is_sel { comp.color() } else if count > 0 { GRID_LINE } else { Color32::from_rgb(30, 36, 46) };
 
@@ -609,6 +669,7 @@ impl eframe::App for QnBenchApp {
                                 let card_click = ui.interact(frame_resp.rect, ui.id().with(("comp_card", comp)), egui::Sense::click());
                                 if card_click.clicked() && count > 0 && self.overlay == Overlay::None {
                                     self.sim.selected = Some(comp);
+                                    self.sim.erase_mode = false;
                                     self.sfx.play(SfxEvent::Select);
                                 }
                                 ui.add_space(6.0);

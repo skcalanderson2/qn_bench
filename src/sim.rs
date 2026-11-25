@@ -192,6 +192,8 @@ pub struct BenchSim {
     pub sandbox_json_buf: String,
     pub sandbox_json_msg: Option<(String, Color32)>,
     pub align_laser: bool,
+    pub erase_mode: bool,
+    pub colorblind_mode: bool,
     pub hint_tier: u8,
     undo_stack: Vec<UndoSnapshot>,
     redo_stack: Vec<UndoSnapshot>,
@@ -247,6 +249,8 @@ impl BenchSim {
             sandbox_json_buf: String::new(),
             sandbox_json_msg: None,
             align_laser: true,
+            erase_mode: false,
+            colorblind_mode: false,
             hint_tier: 0,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -866,6 +870,16 @@ impl BenchSim {
         self.last_earned_stars = None;
         self.sim_active = false;
         self.paused = false;
+    }
+
+    /// Primary pointer/touch action on the optical bench: erases when Erase Mode [X] is active,
+    /// otherwise places (or rotates in Sandbox Mode).
+    pub fn bench_primary_click(&mut self, gx: i32, gy: i32) -> bool {
+        if self.erase_mode {
+            self.remove_component(gx, gy)
+        } else {
+            self.place_component(gx, gy)
+        }
     }
 
     pub fn place_component(&mut self, gx: i32, gy: i32) -> bool {
@@ -2683,5 +2697,42 @@ mod tests {
         assert!(md.contains("Level 20: Quantum Teleportation"));
         assert!(md.contains("*** (3/3 Optimal)"));
         assert!(md.contains("** (2/3)"));
+    }
+
+    #[test]
+    fn touch_erase_mode_and_colorblind_accessibility() {
+        use Placeable::*;
+        let mut sim = BenchSim::new();
+        sim.load_level(0); // Level 1: fixed fiber at (4,2)
+
+        // 1. Place QFC at (2,2), then enable Erase Mode and tap (2,2) to remove & refund inventory
+        sim.selected = Some(Qfc);
+        assert!(sim.bench_primary_click(2, 2));
+        assert_eq!(sim.inventory.get(&Qfc).copied(), Some(0));
+
+        sim.erase_mode = true;
+        // Fixed fiber cannot be erased in Campaign Mode
+        assert!(!sim.bench_primary_click(4, 2));
+        assert_eq!(sim.grid.get(&(4, 2)), Some(&Tile::Fiber));
+        // User-placed QFC IS erased and refunded on primary tap
+        assert!(sim.bench_primary_click(2, 2));
+        assert!(!sim.grid.contains_key(&(2, 2)));
+        assert_eq!(sim.inventory.get(&Qfc).copied(), Some(1));
+
+        // 2. Sandbox Mode primary tap with Erase Mode removes any tile/emitter/detector
+        sim.enter_sandbox();
+        sim.erase_mode = false;
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Fiber);
+        assert!(sim.bench_primary_click(5, 3));
+        assert_eq!(sim.grid.get(&(5, 3)), Some(&Tile::Fiber));
+
+        sim.erase_mode = true;
+        assert!(sim.bench_primary_click(5, 3));
+        assert!(!sim.grid.contains_key(&(5, 3)));
+
+        // 3. Colorblind accessibility toggle defaults false and toggles cleanly
+        assert!(!sim.colorblind_mode);
+        sim.colorblind_mode = true;
+        assert!(sim.colorblind_mode);
     }
 }

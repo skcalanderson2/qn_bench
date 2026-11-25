@@ -540,7 +540,28 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
 
     // 2. Fixed & user-placed components
     for (&(gx, gy), &tile) in &sim.grid {
-        draw_tile_schematic(&p, tile_rect(gx, gy), tile, sim.frame, 255);
+        let tr = tile_rect(gx, gy);
+        draw_tile_schematic(&p, tr, tile, sim.frame, 255);
+        if sim.colorblind_mode {
+            let badge = match tile {
+                Tile::Fiber => Some("1550"),
+                Tile::LitFiber => Some("+N15"),
+                Tile::PmdFiber => Some("PMD"),
+                Tile::CdFiber => Some("CD"),
+                Tile::Atmos => Some("ATM"),
+                Tile::Eve => Some("EVE!"),
+                _ => None,
+            };
+            if let Some(tag) = badge {
+                let br = Rect::from_min_size(
+                    Pos2::new(tr.left() + 4.0 * scale, tr.top() + 4.0 * scale),
+                    Vec2::new((tag.len() as f32 * 5.8 + 6.0) * scale, 13.0 * scale),
+                );
+                p.rect_filled(br, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 225));
+                p.rect_stroke(br, CornerRadius::same(2), Stroke::new(1.0_f32, TEXT_WHITE), StrokeKind::Inside);
+                p.text(br.center(), Align2::CENTER_CENTER, tag, FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
+            }
+        }
     }
 
     // 2b. Live Alignment Laser Preview (subtle animated guide beam + timing readout when idle)
@@ -548,6 +569,7 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
         let beams = sim.trace_alignment_beams();
         let phase = (sim.frame as f32 * 0.7) % 16.0;
         for beam in &beams {
+            let mut prev_wl: Option<u32> = None;
             for seg in &beam.segments {
                 let c1 = tile_rect(seg.x1, seg.y1).center();
                 let c2 = tile_rect(seg.x2, seg.y2).center();
@@ -562,16 +584,35 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
                 } else {
                     ACCENT_CYAN
                 };
+                // Colorblind mode uses distinct dash cadences per wavelength + inline wavelength pills
+                let (dash_len, gap_len, width_mult) = if sim.colorblind_mode {
+                    match seg.wavelength {
+                        780 => (4.0, 4.0, 2.8),
+                        637 => (6.0, 9.0, 2.8),
+                        _ => (14.0, 5.0, 2.6),
+                    }
+                } else {
+                    (8.0, 8.0, 2.2)
+                };
                 draw_dashed_segment(
                     &p,
                     c1,
                     c2,
-                    with_alpha(base_col, 130),
-                    (2.2 * scale).max(1.2),
-                    8.0 * scale,
-                    8.0 * scale,
+                    with_alpha(base_col, if sim.colorblind_mode { 195 } else { 130 }),
+                    (width_mult * scale).max(1.2),
+                    dash_len * scale,
+                    gap_len * scale,
                     phase * scale,
                 );
+                if sim.colorblind_mode && prev_wl != Some(seg.wavelength) {
+                    prev_wl = Some(seg.wavelength);
+                    let mid = Pos2::new((c1.x + c2.x) * 0.5, (c1.y + c2.y) * 0.5 - 10.0 * scale);
+                    let wtag = format!("{}", seg.wavelength);
+                    let tr_b = Rect::from_center_size(mid, Vec2::new(28.0 * scale, 12.0 * scale));
+                    p.rect_filled(tr_b, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 230));
+                    p.rect_stroke(tr_b, CornerRadius::same(2), Stroke::new(1.0_f32, base_col), StrokeKind::Inside);
+                    p.text(mid, Align2::CENTER_CENTER, wtag, FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
+                }
             }
             if beam.blocked {
                 let end_c = tile_rect(beam.end_pos.0, beam.end_pos.1).center();
@@ -605,7 +646,7 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
         {
             inspect_doc = doc_key_at(sim, (hgx, hgy));
         } else if resp.clicked_by(egui::PointerButton::Primary) {
-            sim.place_component(hgx, hgy);
+            sim.bench_primary_click(hgx, hgy);
         } else if resp.clicked_by(egui::PointerButton::Secondary) {
             sim.remove_component(hgx, hgy);
         }
@@ -632,7 +673,18 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
             );
         };
 
-        if sim.sandbox_mode {
+        if sim.erase_mode {
+            let can_erase = sim.sandbox_mode || sim.user_placed.contains(&(hgx, hgy));
+            let ecol = if can_erase { ACCENT_RED } else { Color32::from_rgb(110, 68, 76) };
+            draw_reticle(&p, ecol);
+            if can_erase {
+                let d = 14.0 * scale;
+                let c = tr.center();
+                p.rect_filled(tr.shrink(4.0 * scale), CornerRadius::same(4), Color32::from_rgba_unmultiplied(244, 63, 94, 42));
+                p.line_segment([Pos2::new(c.x - d, c.y - d), Pos2::new(c.x + d, c.y + d)], Stroke::new(2.5 * scale, ACCENT_RED));
+                p.line_segment([Pos2::new(c.x - d, c.y + d), Pos2::new(c.x + d, c.y - d)], Stroke::new(2.5 * scale, ACCENT_RED));
+            }
+        } else if sim.sandbox_mode {
             match sim.sandbox_tool {
                 SandboxTool::Tile(t) => draw_tile_schematic(&p, tr, t, sim.frame, 115),
                 SandboxTool::EmitterIon => draw_emitter(&p, tr, '+', sim.sandbox_dir, 780, Pol::Plus, false, sim.frame, 120),
@@ -754,6 +806,40 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
 
             p.circle_filled(center, 7.0 * scale, pcol);
             p.circle_filled(center, 3.0 * scale, TEXT_WHITE);
+
+            if sim.colorblind_mode {
+                let r = 12.0 * scale;
+                match ph.wavelength {
+                    780 => {
+                        // Upward triangle marker for 780nm
+                        let tri = vec![
+                            Pos2::new(center.x, center.y - r),
+                            Pos2::new(center.x + r * 0.9, center.y + r * 0.75),
+                            Pos2::new(center.x - r * 0.9, center.y + r * 0.75),
+                        ];
+                        p.add(egui::Shape::closed_line(tri, Stroke::new(2.0 * scale, TEXT_WHITE)));
+                    }
+                    637 => {
+                        // Diamond marker for 637nm
+                        let dia = vec![
+                            Pos2::new(center.x, center.y - r),
+                            Pos2::new(center.x + r, center.y),
+                            Pos2::new(center.x, center.y + r),
+                            Pos2::new(center.x - r, center.y),
+                        ];
+                        p.add(egui::Shape::closed_line(dia, Stroke::new(2.0 * scale, TEXT_WHITE)));
+                    }
+                    _ => {
+                        // Crisp high-contrast circle ring for 1550nm
+                        p.circle_stroke(center, r, Stroke::new(2.0 * scale, TEXT_WHITE));
+                    }
+                }
+                let badge_pos = Pos2::new(center.x, center.y - (r + 8.0 * scale));
+                let badge_r = Rect::from_center_size(badge_pos, Vec2::new(30.0 * scale, 12.0 * scale));
+                p.rect_filled(badge_r, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 235));
+                p.rect_stroke(badge_r, CornerRadius::same(2), Stroke::new(1.0_f32, TEXT_WHITE), StrokeKind::Inside);
+                p.text(badge_pos, Align2::CENTER_CENTER, format!("{}", ph.wavelength), FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
+            }
         }
     }
 

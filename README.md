@@ -48,8 +48,10 @@ trunk serve --public-url /
 *(The original Python + Pygame `v1.1.0` prototype is preserved on the `python-v1` branch.)*
 
 ### Controls
-* **L-Click** — Place selected component (or rotate an emitter in Sandbox Mode)
+* **L-Click / Tap** — Place selected component (or rotate an emitter in Sandbox Mode; removes when `ERASE [X]` is active)
 * **R-Click** — Remove placed component
+* **X** — Toggle **Touch / Tap Erase Mode** (ideal for tablets, iPads, and trackpads without right-click)
+* **C** — Toggle **Colorblind / High-Contrast Pattern Mode** (adds distinct geometric markers, dash cadences, and wavelength badges for `780nm`, `637nm`, and `1550nm`)
 * **Shift+Click / Middle-Click** — Inspect any hardware tile's full Physics Specification (`?`)
 * **SPACE** — Fire single photon(s) / QKD burst
 * **Enter** — Advance to next level after solving
