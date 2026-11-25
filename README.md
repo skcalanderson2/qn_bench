@@ -1,17 +1,18 @@
 # QN Bench — Quantum Networking Optical Bench
 
-An educational 2D optical-bench puzzle game built in **Python + Pygame** that teaches the real physics and hardware stack of quantum networking — single-photon transduction (`780nm`/`637nm` → `1550nm`), Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, entanglement distillation, and adaptive optics satellite downlinks.
+An educational 2D optical-bench puzzle game built in **Rust + `eframe`/`egui`** (compiling to **WebAssembly**, **macOS Universal**, and **Windows x64**) that teaches the real physics and hardware stack of quantum networking — single-photon transduction (`780nm`/`637nm` → `1550nm`), Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, entanglement distillation, adaptive optics satellite downlinks, and end-to-end **BB84 / E91 QKD + FIPS-197 AES-256** cryptography.
 
-## Download (macOS & Windows)
+## Play in Browser or Download
 
+* **▶ Play Instantly in Browser (WebAssembly):** https://skcalanderson2.github.io/qn_bench/play/
 * **Download Page:** https://skcalanderson2.github.io/qn_bench/
 * **GitHub Releases:** https://github.com/skcalanderson2/qn_bench/releases/latest
 
-* **macOS (Apple Silicon):** Download `QN-Bench-*-macos-arm64.dmg` (signed with an Apple Developer ID certificate and notarized by Apple) and drag `QN Bench.app` into `Applications`.
+* **macOS Universal (Apple Silicon & Intel):** Download `QN-Bench-*-macos-universal.dmg` (signed with Apple Developer ID and notarized by Apple) and drag `QN Bench.app` into `Applications`.
 * **Windows (10/11 x64):** Download `QN-Bench-*-windows-x64-setup.exe` (per-user installer, no admin needed) or the portable `QN-Bench-windows-x64.zip`. *(Unsigned build: if Windows SmartScreen prompts on first launch, click **More info → Run anyway**.)*
 
-### In-App Self-Updating
-`QN Bench` automatically checks GitHub Releases in the background on startup (or manually via the sidebar version pill / `U` key). When a newer release is available, it displays the release notes and asks for your permission before downloading, verifying the SHA-256 digest (plus Apple Developer signature `TeamIdentifier` on macOS), swapping the bundle, and relaunching.
+### In-App Self-Updating (Desktop)
+Native macOS and Windows builds check GitHub Releases in the background on startup (or manually via the sidebar version pill / `U` key). When a newer release is available, QN Bench displays the release notes and asks for your permission before downloading, verifying SHA-256 (plus Apple Developer `TeamIdentifier` on macOS), swapping the bundle, and relaunching.
 
 ---
 
@@ -31,24 +32,29 @@ An educational 2D optical-bench puzzle game built in **Python + Pygame** that te
 
 ---
 
-## Running from Source
+## Building from Source (Rust)
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install pygame certifi
-.venv/bin/python3 qn_bench.py
+# Run native desktop app
+cargo run --release
+
+# Run physics & NIST FIPS-197 AES-256 test suite (all 14 levels)
+cargo test
+
+# Run locally in browser (WebAssembly via Trunk)
+trunk serve --public-url /
 ```
+
+*(The original Python + Pygame `v1.1.0` prototype is preserved on the `python-v1` branch.)*
 
 ### Controls
 * **L-Click** — Place selected optical component
 * **R-Click** — Remove placed component
-* **SPACE** — Fire single photon(s)
+* **SPACE** — Fire single photon(s) / QKD burst
+* **P** — Pause / resume simulation (use `0.5x` / `1x` / `2x` pill to adjust speed)
 * **R** — Reset current level
 * **H** — Open Experiment Briefing overlay
 * **K** — Open QKD & AES-256 Inspector (on Levels 12–14)
-* **U** — Check for software updates
+* **U** — Check for software updates (desktop)
 * **M** — Mute / unmute procedural lab audio
 * **1–9, 0, -, [ / ]** — Switch levels
-
----
-

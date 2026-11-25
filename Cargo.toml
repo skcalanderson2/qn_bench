@@ -1,0 +1,58 @@
+[package]
+name = "qn_bench"
+version = "2.0.0"
+edition = "2021"
+description = "QN Bench — Quantum Networking Optical Bench (macOS, Windows, WebAssembly)"
+default-run = "qn_bench"
+
+[[bin]]
+name = "qn_bench"
+path = "src/main.rs"
+
+[[bin]]
+name = "gen_icons"
+path = "src/bin/gen_icons.rs"
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence"] }
+egui = "0.31"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+aes = "0.8"
+ctr = "0.9"
+rand = "0.8"
+getrandom = { version = "0.2", features = ["js"] }
+png = "0.17"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rodio = { version = "0.20", default-features = false }
+ureq = { version = "2", features = ["json"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+webbrowser = "1"
+tempfile = "3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "AudioContext",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "AudioDestinationNode",
+    "GainNode",
+] }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = "symbols"
+codegen-units = 1

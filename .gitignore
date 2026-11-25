@@ -1,23 +1,17 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Rust / Cargo
+/target/
+**/*.rs.bk
 
-# Virtual environments
+# Build & packaging outputs
+/build/
+/dist/
+/docs/play/
+
+# Legacy Python virtualenv & caches (if present locally)
 .venv/
 venv/
-ENV/
-
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-
-# Caches & logs
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-*.log
+__pycache__/
+*.py[cod]
 
 # Editor / OS files
 .DS_Store
@@ -25,3 +19,4 @@ dist/
 .idea/
 *.swp
 *.swo
+*.log

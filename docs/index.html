@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>QN Bench — Quantum Networking Optical Bench for macOS &amp; Windows</title>
-  <meta name="description" content="Download QN Bench for macOS (signed &amp; notarized) and Windows (x64) — an educational 2D quantum networking optical-bench puzzle game.">
+  <title>QN Bench — Quantum Networking Optical Bench (Web, macOS &amp; Windows)</title>
+  <meta name="description" content="Play QN Bench instantly in your browser via WebAssembly or download native macOS (Universal, signed &amp; notarized) and Windows (x64) desktop apps.">
   <style>
     :root {
       color-scheme: dark;
@@ -239,6 +239,26 @@
 
     .btn-primary:hover {
       background: color-mix(in oklab, var(--accent-cyan) 86%, white);
+    }
+
+    .btn-play-web {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      padding: 0.85rem 1.4rem;
+      border-radius: 10px;
+      border: 2px solid var(--accent-green);
+      background: var(--accent-green);
+      color: var(--btn-text-dark);
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 1.02rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .btn-play-web:hover {
+      background: color-mix(in oklab, var(--accent-green) 86%, white);
     }
 
     .btn-stack {
@@ -547,7 +567,7 @@
     }
 
     @media (forced-colors: active) {
-      .download-card, .card, .badge, .nav-link, .btn-primary, .btn-platform-alt, .btn-secondary, .shot-card, dialog.lightbox, .lightbox-close {
+      .download-card, .card, .badge, .nav-link, .btn-primary, .btn-play-web, .btn-platform-alt, .btn-secondary, .shot-card, dialog.lightbox, .lightbox-close {
         border: 2px solid ButtonText;
       }
       .btn-primary {
@@ -574,6 +594,7 @@
         </span>
       </a>
       <nav class="topnav" aria-label="Project links">
+        <a class="nav-link" href="./play/">▶ Play in Browser</a>
         <a class="nav-link" href="https://github.com/skcalanderson2/qn_bench">GitHub Repository</a>
         <a class="nav-link" href="https://github.com/skcalanderson2/qn_bench/releases">All Releases</a>
       </nav>
@@ -583,30 +604,33 @@
       <section class="hero" aria-labelledby="hero-heading">
         <div class="hero-grid">
           <div>
-            <span class="eyebrow">C-BAND TELECOM • MACOS &amp; WINDOWS DESKTOP APP</span>
+            <span class="eyebrow">RUST + EGUI • WEB, MACOS UNIVERSAL &amp; WINDOWS</span>
             <h1 id="hero-heading">Build real quantum network links on an optical bench.</h1>
             <p class="lead">
               <strong>QN Bench</strong> is a 2D educational puzzle game that teaches how single photons are generated,
               frequency-converted, filtered, buffered in quantum memory, synchronized for Hong-Ou-Mandel interference,
-              and delivered to cryogenic detectors and fault-tolerant QPUs.
+              and used to distill live FIPS-197 AES-256 keys via BB84 &amp; entangled E91 QKD.
             </p>
+            <a class="btn-play-web" href="./play/">
+              <span>▶ Play QN Bench in Browser (WebAssembly)</span>
+            </a>
             <div class="badges" aria-label="Release assurances">
-              <span class="badge">✓ macOS Signed &amp; Apple Notarized</span>
-              <span class="badge">✓ Windows 10/11 (x64) Installer &amp; Portable ZIP</span>
-              <span class="badge">✓ Live BB84/E91 QKD &amp; FIPS-197 AES-256</span>
-              <span class="badge">✓ 14 Physics Levels • Opt-in Self-Updater</span>
+              <span class="badge">✓ Instant Play in Browser (WASM)</span>
+              <span class="badge">✓ macOS Universal Signed &amp; Notarized</span>
+              <span class="badge">✓ Windows 10/11 (x64) Native App</span>
+              <span class="badge">✓ 14 Physics &amp; QKD Levels • Live AES-256</span>
             </div>
           </div>
 
           <aside class="download-card" aria-labelledby="dl-heading">
             <div class="release-header">
               <span id="dl-heading" class="release-ver" data-el="version">Latest Release</span>
-              <span class="release-meta" data-el="date">macOS (arm64) &amp; Windows (x64)</span>
+              <span class="release-meta" data-el="date">macOS Universal &amp; Windows x64</span>
             </div>
 
             <div class="btn-stack" data-el="platform-buttons">
               <a class="btn-primary" data-el="dmg-link" href="https://github.com/skcalanderson2/qn_bench/releases/latest">
-                <span>⬇ Download for macOS (.dmg)</span>
+                <span>⬇ Download for macOS Universal (.dmg)</span>
               </a>
               <a class="btn-platform-alt" data-el="win-setup-link" href="https://github.com/skcalanderson2/qn_bench/releases/latest">
                 <span>⬇ Download for Windows (.exe)</span>
@@ -769,7 +793,7 @@
 
     <footer>
       <span>QN Bench — Quantum Networking Optical Bench</span>
-      <span>Built with Python + Pygame • Hosted on <a href="https://github.com/skcalanderson2/qn_bench">GitHub</a></span>
+      <span>Built with Rust + egui (Native &amp; WebAssembly) • Hosted on <a href="https://github.com/skcalanderson2/qn_bench">GitHub</a></span>
     </footer>
   </div>
 

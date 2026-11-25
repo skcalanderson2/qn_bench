@@ -1,11 +1,11 @@
 # QN Bench — Quantum Networking Optical Bench
 
 ## Project Overview
-**QN Bench** is an educational 2D optical-bench puzzle game built in **Python + Pygame**. The goal is to teach players both the conceptual physics and the physical hardware stack of quantum networking—specifically how single photons are generated, frequency-converted, filtered, buffered, routed, and measured.
+**QN Bench** is an educational 2D optical-bench puzzle game built in **Rust + `eframe`/`egui`** (targeting **macOS Universal**, **Windows x64**, and **WebAssembly**). The goal is to teach players both the conceptual physics and the physical hardware stack of quantum networking—specifically how single photons are generated, frequency-converted, filtered, buffered, routed, entangled, and used for BB84/E91 QKD + AES-256 encryption.
 
-* **Entry Point:** `qn_bench.py`
-* **Dependencies:** `pygame` (standard library `sys`, `math`, `random`)
-* **Asset Policy:** 100% procedural graphics (no external image or audio assets). All optical components, breadboard holes, neon alpha glows, particle bursts, and shockwaves are rendered via Pygame primitives.
+* **Entry Point:** `src/main.rs` (modular crate under `src/`, original Python `v1.1.0` preserved on branch `python-v1`)
+* **Key Crates:** `eframe`, `egui`, `aes`, `ctr`, `sha2`, `serde`, `rodio` (native), `web-sys` (WASM)
+* **Asset Policy:** 100% procedural graphics & audio (no external image or audio assets committed). All optical components, breadboard holes, neon radial glows, particle bursts, shockwaves, icons (`gen_icons`), and 17 lab SFX waveforms are generated procedurally.
 
 ---
 

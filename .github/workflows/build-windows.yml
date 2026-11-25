@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to build and attach Windows assets to (e.g. v1.0.3)"
+        description: "Release tag to build and attach Windows assets to (e.g. v2.0.0)"
         required: true
         type: string
 
@@ -29,32 +29,29 @@ jobs:
           $ver = $tag.TrimStart("v", "V")
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Building Windows release for $tag (version $ver)"
+          Write-Host "Building Rust Windows x64 release for $tag (version $ver)"
 
       - name: Checkout repository at release tag
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.meta.outputs.tag }}
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install build dependencies
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install pygame pyinstaller certifi
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Generate procedural Windows icon (.ico)
         shell: pwsh
-        run: python build_icon.py --ico
+        run: cargo run --release --bin gen_icons -- --ico
 
-      - name: Build Windows executable with PyInstaller
+      - name: Build Rust Windows binary (x64)
         shell: pwsh
         run: |
-          pyinstaller --clean --noconfirm QN-Bench.spec
+          cargo build --release --bin qn_bench
+          New-Item -ItemType Directory -Force -Path "dist\QN Bench" | Out-Null
+          Copy-Item "target\release\qn_bench.exe" "dist\QN Bench\QN Bench.exe" -Force
           if (-not (Test-Path "dist\QN Bench\QN Bench.exe")) {
             Write-Error "Expected dist\QN Bench\QN Bench.exe was not generated."
             exit 1

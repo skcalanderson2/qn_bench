@@ -1,0 +1,7 @@
+[build]
+target = "web/index.html"
+dist = "docs/play"
+public_url = "/qn_bench/play/"
+
+[watch]
+ignore = ["docs"]

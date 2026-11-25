@@ -3,7 +3,7 @@
 ; is required and the in-app self-updater can update cleanly in place.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.3"
+  #define AppVersion "2.0.0"
 #endif
 
 [Setup]

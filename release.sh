@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-command macOS build, sign, notarize, staple, package, and GitHub Release script
+# One-command Rust macOS Universal (arm64 + x86_64) build, sign, notarize, staple, DMG/ZIP & GitHub Release script
 # Usage:
-#   ./release.sh                     # Build & publish current version from version.py
-#   ./release.sh --version 1.0.1     # Bump version.py, commit/tag, build & publish
+#   ./release.sh                     # Build & publish current version from Cargo.toml
+#   ./release.sh --version 2.0.1     # Bump Cargo.toml, build, commit, push & publish
 #   ./release.sh --skip-publish      # Build, sign & notarize locally in dist/ only
 #   ./release.sh --notes "Highlights"
 
@@ -15,9 +15,7 @@ SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Al Anderson (MR38JF8F3
 NOTARY_PROFILE="${NOTARY_PROFILE:-qn-bench-notary}"
 APP_NAME="QN Bench"
 APP_SLUG="QN-Bench"
-SPEC_FILE="QN-Bench.spec"
-VENV_PY="${SCRIPT_DIR}/.venv/bin/python3"
-VENV_PYINSTALLER="${SCRIPT_DIR}/.venv/bin/pyinstaller"
+BUNDLE_ID="com.alanderson.qn-bench"
 
 BUMP_VERSION=""
 SKIP_PUBLISH=0
@@ -49,59 +47,85 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ ! -x "$VENV_PY" || ! -x "$VENV_PYINSTALLER" ]]; then
-    echo "Error: .venv not initialized. Run:" >&2
-    echo "  python3 -m venv .venv && .venv/bin/pip install pygame pyinstaller certifi" >&2
-    exit 1
-fi
-
 if [[ -n "$BUMP_VERSION" ]]; then
-    "$VENV_PY" - "$BUMP_VERSION" <<'PY'
+    python3 - "$BUMP_VERSION" <<'PY'
 import re, sys
 from pathlib import Path
-
 new_ver = sys.argv[1].lstrip("vV")
-p = Path("version.py")
-text = p.read_text(encoding="utf-8")
-updated = re.sub(r'APP_VERSION\s*=\s*"[^"]+"', f'APP_VERSION = "{new_ver}"', text, count=1)
-p.write_text(updated, encoding="utf-8")
-print(f"Updated version.py to {new_ver}")
+p = Path("Cargo.toml")
+txt = p.read_text(encoding="utf-8")
+txt = re.sub(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{new_ver}"', txt, count=1)
+p.write_text(txt, encoding="utf-8")
+print(f"Updated Cargo.toml version to {new_ver}")
 PY
 fi
 
-VERSION="$("$VENV_PY" -c "import version; print(version.APP_VERSION)")"
+VERSION="$(python3 -c 'import re; print(re.search(r"(?m)^version\s*=\s*\"([^\"]+)\"", open("Cargo.toml").read()).group(1))')"
 TAG="v${VERSION}"
 APP_PATH="dist/${APP_NAME}.app"
+# Keep QN-Bench-macos-arm64.zip filename so v1.x macOS self-updaters upgrade seamlessly to Universal v2.x!
 ZIP_PATH="dist/${APP_SLUG}-macos-arm64.zip"
-DMG_PATH="dist/${APP_SLUG}-${VERSION}-macos-arm64.dmg"
+DMG_PATH="dist/${APP_SLUG}-${VERSION}-macos-universal.dmg"
 SUMS_PATH="dist/SHA256SUMS.txt"
 
-echo "==> Building ${APP_NAME} ${TAG} (arm64)..."
+echo "==> Running Rust physics & FIPS-197 AES-256 test suite..."
+cargo test --offline
+
+echo "==> Generating procedural Retina macOS icon (.icns)..."
 rm -rf build dist
-"$VENV_PY" build_icon.py
-PYINSTALLER_CONFIG_DIR="${SCRIPT_DIR}/build/pyi_cache" "$VENV_PYINSTALLER" --clean --noconfirm "$SPEC_FILE"
+cargo run --release --bin gen_icons -- --icns
 
-echo "==> Signing nested binaries inside ${APP_PATH} (inside-out)..."
-sign_item() {
-    codesign --force --options runtime --timestamp \
-        --entitlements entitlements.plist \
-        --sign "$SIGN_IDENTITY" "$1"
-}
+echo "==> Compiling Rust macOS Universal Binary (arm64 + x86_64) for ${APP_NAME} ${TAG}..."
+cargo build --release --bin qn_bench --target aarch64-apple-darwin
+cargo build --release --bin qn_bench --target x86_64-apple-darwin
 
-# Sign all Mach-O libraries and binaries inside Contents/Frameworks and Contents/Resources
-while IFS= read -r -d '' f; do
-    if file -b "$f" | grep -q "Mach-O"; then
-        sign_item "$f"
-    fi
-done < <(find "${APP_PATH}/Contents" -type f \( -name "*.so" -o -name "*.dylib" -o -perm -111 \) -print0)
+echo "==> Assembling ${APP_PATH} bundle..."
+mkdir -p "${APP_PATH}/Contents/MacOS" "${APP_PATH}/Contents/Resources"
+lipo -create \
+    "target/aarch64-apple-darwin/release/qn_bench" \
+    "target/x86_64-apple-darwin/release/qn_bench" \
+    -output "${APP_PATH}/Contents/MacOS/${APP_NAME}"
+chmod +x "${APP_PATH}/Contents/MacOS/${APP_NAME}"
+cp "build/${APP_SLUG}.icns" "${APP_PATH}/Contents/Resources/${APP_SLUG}.icns"
 
-# Sign any nested frameworks
-while IFS= read -r -d '' fw; do
-    sign_item "$fw"
-done < <(find "${APP_PATH}/Contents" -type d -name "*.framework" -print0)
+cat > "${APP_PATH}/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>${APP_NAME}</string>
+    <key>CFBundleDisplayName</key>
+    <string>${APP_NAME}</string>
+    <key>CFBundleExecutable</key>
+    <string>${APP_NAME}</string>
+    <key>CFBundleIdentifier</key>
+    <string>${BUNDLE_ID}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${VERSION}</string>
+    <key>CFBundleVersion</key>
+    <string>${VERSION}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>${APP_SLUG}</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.educational-games</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © Al Anderson</string>
+</dict>
+</plist>
+PLIST
 
-# Sign the top-level .app bundle last
-sign_item "$APP_PATH"
+echo "==> Signing ${APP_PATH} with Developer ID (Hardened Runtime)..."
+codesign --force --options runtime --timestamp \
+    --sign "$SIGN_IDENTITY" "${APP_PATH}/Contents/MacOS/${APP_NAME}"
+codesign --force --options runtime --timestamp \
+    --sign "$SIGN_IDENTITY" "$APP_PATH"
 
 echo "==> Verifying code signature..."
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
@@ -126,9 +150,8 @@ if [[ "$SKIP_NOTARIZE" -eq 0 ]]; then
 fi
 
 echo "==> Creating macOS installer DMG (${DMG_PATH})..."
-DMG_STAGE="build/dmg_stage"
-rm -rf "$DMG_STAGE" "$DMG_PATH"
-mkdir -p "$DMG_STAGE"
+DMG_STAGE="$(mktemp -d)"
+trap 'rm -rf "$DMG_STAGE"' EXIT
 cp -R "$APP_PATH" "$DMG_STAGE/"
 ln -s /Applications "$DMG_STAGE/Applications"
 
@@ -138,6 +161,7 @@ hdiutil create \
     -ov \
     -format UDZO \
     "$DMG_PATH"
+rm -rf "$DMG_STAGE"
 
 echo "==> Signing DMG..."
 codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG_PATH"
@@ -169,18 +193,19 @@ if [[ "$SKIP_PUBLISH" -eq 1 ]]; then
 fi
 
 if [[ -n "$BUMP_VERSION" ]]; then
-    git add version.py
+    git add Cargo.toml Cargo.lock
     git commit -m "Release ${TAG}"
     git push origin main
 fi
 
 echo "==> Publishing GitHub Release ${TAG}..."
 if [[ -z "$RELEASE_NOTES" ]]; then
-    RELEASE_NOTES="Desktop release of **QN Bench — Quantum Networking Optical Bench** (${TAG}).
+    RELEASE_NOTES="Desktop & WebAssembly release of **QN Bench — Quantum Networking Optical Bench** (${TAG}), powered by Rust + egui.
 
-### Downloads
-- **macOS (Apple Silicon — Signed & Notarized):** \`QN-Bench-${VERSION}-macos-arm64.dmg\` (drag \`QN Bench.app\` into \`Applications\`)
-- **Windows (x64 — Built via GitHub Actions):** \`QN-Bench-${VERSION}-windows-x64-setup.exe\` installer or portable \`QN-Bench-windows-x64.zip\` *(unsigned: click More info → Run anyway if SmartScreen prompts)*
+### Play or Download
+- **Play in Browser (WebAssembly):** https://skcalanderson2.github.io/qn_bench/play/
+- **macOS Universal (Apple Silicon & Intel — Signed & Notarized):** \`QN-Bench-${VERSION}-macos-universal.dmg\`
+- **Windows (x64 — Built via GitHub Actions):** \`QN-Bench-${VERSION}-windows-x64-setup.exe\` or portable \`QN-Bench-windows-x64.zip\` *(unsigned: click More info → Run anyway if SmartScreen prompts)*
 - **Auto-Update Archives (\`.zip\`):** Used automatically by the opt-in in-app updater (verified via SHA-256 + Apple Developer ID signature on macOS)."
 fi
 
