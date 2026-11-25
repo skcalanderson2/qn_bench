@@ -65,6 +65,7 @@ trunk serve --public-url /
 * **G** — Open **Quantum Lab Report** (1–3 Star Efficiency Ratings across all 20 levels + one-click Copy Markdown Report)
 * **R** — Reset current level (or stop/reset beam in Sandbox Mode)
 * **H** — Open Experiment Briefing (or Sandbox Templates / JSON Blueprints modal)
+* **V** — Watch **Lab Video Guide** on YouTube (embedded modal player in WebAssembly; opens default browser on Desktop)
 * **K** — Open QKD & AES-256 Inspector (on Levels 12–14, 16, or Sandbox QKD benches)
 * **U** — Check for software updates (desktop)
 * **M** — Mute / unmute procedural lab audio

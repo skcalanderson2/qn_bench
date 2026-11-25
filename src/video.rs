@@ -333,5 +333,17 @@ mod tests {
         assert_eq!(parsed.get(&0).map(String::as_str), Some("dQw4w9WgXcQ"));
         assert_eq!(parsed.get(&19).map(String::as_str), Some("AbCdEf123_-"));
         assert!(!parsed.contains_key(&1));
+
+        // Verify the real embedded docs/videos.json parses cleanly and every non-empty URL is valid
+        let raw: RawVideoManifest =
+            serde_json::from_str(EMBEDDED_VIDEOS_JSON).expect("valid docs/videos.json");
+        for (k, v) in &raw.levels {
+            if !v.trim().is_empty() {
+                assert!(
+                    extract_youtube_id(v).is_some(),
+                    "Invalid YouTube link/ID for level {k}: {v}"
+                );
+            }
+        }
     }
 }
