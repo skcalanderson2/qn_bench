@@ -121,6 +121,29 @@ pub fn draw_tile_schematic(p: &Painter, rect: Rect, tile: Tile, frame: u64, alph
             p.line_segment([Pos2::new(cx - 6.0 * s, rect.top() + 32.0 * s), Pos2::new(cx + 12.0 * s, rect.top() + 32.0 * s)], Stroke::new(2.0 * s, col(Color32::from_rgb(190, 255, 230))));
             p.text(Pos2::new(cx, rect.top() + 62.0 * s), Align2::CENTER_CENTER, "DISTILL", font_tile, col(ACCENT_GREEN));
         }
+        Tile::Repeater => {
+            p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(Color32::from_rgb(16, 36, 52)));
+            p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(ACCENT_CYAN)), StrokeKind::Inside);
+            // BSM cube on left half
+            let cube = Rect::from_min_size(Pos2::new(cx - 20.0 * s, rect.top() + 18.0 * s), Vec2::new(22.0 * s, 26.0 * s));
+            p.rect_filled(cube, CornerRadius::same((3.0 * s) as u8), col(Color32::from_rgb(28, 66, 94)));
+            p.rect_stroke(cube, CornerRadius::same((3.0 * s) as u8), Stroke::new(1.6 * s, col(ACCENT_CYAN)), StrokeKind::Inside);
+            p.line_segment([cube.left_bottom(), cube.right_top()], Stroke::new(1.6 * s, col(Color32::from_rgb(210, 248, 255))));
+            // Classical feedforward herald pulse + rightward Hop-2 emitter chevron
+            let pulse = (3.0 + 1.4 * (frame as f32 * 0.14).sin()) * s;
+            p.circle_filled(Pos2::new(cx + 10.0 * s, rect.top() + 24.0 * s), pulse, col(ACCENT_AMBER));
+            p.line_segment([Pos2::new(cx + 3.0 * s, rect.top() + 36.0 * s), Pos2::new(cx + 22.0 * s, rect.top() + 36.0 * s)], Stroke::new(2.2 * s, col(ACCENT_TEAL)));
+            p.add(egui::Shape::convex_polygon(
+                vec![
+                    Pos2::new(cx + 26.0 * s, rect.top() + 36.0 * s),
+                    Pos2::new(cx + 18.0 * s, rect.top() + 31.0 * s),
+                    Pos2::new(cx + 18.0 * s, rect.top() + 41.0 * s),
+                ],
+                col(ACCENT_TEAL),
+                Stroke::NONE,
+            ));
+            p.text(Pos2::new(cx, rect.top() + 62.0 * s), Align2::CENTER_CENTER, "REPEATER", font_tile, col(ACCENT_CYAN));
+        }
         Tile::Placeable(Placeable::Qfc) => {
             p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(Color32::from_rgb(28, 24, 48)));
             p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(ACCENT_PURPLE)), StrokeKind::Inside);
@@ -499,6 +522,8 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
                     ACCENT_RED
                 } else if ph.pid == "P" {
                     ACCENT_GREEN
+                } else if ph.pid == "H" {
+                    ACCENT_TEAL
                 } else {
                     ACCENT_CYAN
                 };
@@ -515,6 +540,8 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
                 ACCENT_RED
             } else if ph.pid == "P" {
                 ACCENT_GREEN
+            } else if ph.pid == "H" {
+                ACCENT_TEAL
             } else {
                 ACCENT_CYAN
             };

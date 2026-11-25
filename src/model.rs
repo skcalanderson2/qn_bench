@@ -195,6 +195,7 @@ pub enum Tile {
     PmdFiber,
     Atmos,
     Distill,
+    Repeater,
     Eve,
 }
 
@@ -282,12 +283,13 @@ impl SandboxTool {
         SandboxTool::Tile(Tile::Placeable(Placeable::MirrorBack)),
     ];
 
-    pub const CHANNELS: [SandboxTool; 7] = [
+    pub const CHANNELS: [SandboxTool; 8] = [
         SandboxTool::Tile(Tile::Fiber),
         SandboxTool::Tile(Tile::LitFiber),
         SandboxTool::Tile(Tile::PmdFiber),
         SandboxTool::Tile(Tile::Atmos),
         SandboxTool::Tile(Tile::Distill),
+        SandboxTool::Tile(Tile::Repeater),
         SandboxTool::Tile(Tile::Eve),
         SandboxTool::Tile(Tile::Wall),
     ];
@@ -312,6 +314,7 @@ impl SandboxTool {
             SandboxTool::Tile(Tile::PmdFiber) => "PMD Fiber",
             SandboxTool::Tile(Tile::Atmos) => "Atmosphere",
             SandboxTool::Tile(Tile::Distill) => "Distill Purifier",
+            SandboxTool::Tile(Tile::Repeater) => "Quantum Repeater",
             SandboxTool::Tile(Tile::Eve) => "Eve Fiber Tap",
             SandboxTool::Tile(Tile::Wall) => "Cryostat Wall",
             SandboxTool::EmitterIon => "ION 780nm Emitter",
@@ -334,6 +337,7 @@ impl SandboxTool {
             SandboxTool::Tile(Tile::PmdFiber) => "1550nm (-10% fid, flips pol)",
             SandboxTool::Tile(Tile::Atmos) => "Free-space (-25% or -5% w/ AO)",
             SandboxTool::Tile(Tile::Distill) => "2x photons -> 1x 95% photon",
+            SandboxTool::Tile(Tile::Repeater) => "Hop-1 BSM (<=15ps, pol=) -> Hop-2",
             SandboxTool::Tile(Tile::Eve) => "Intercept-resend QKD tap",
             SandboxTool::Tile(Tile::Wall) => "Opaque cryostat shield",
             SandboxTool::EmitterIon => "Fires 780nm photon (rotatable)",
@@ -356,6 +360,7 @@ impl SandboxTool {
             SandboxTool::Tile(Tile::PmdFiber) => ACCENT_PURPLE,
             SandboxTool::Tile(Tile::Atmos) => ACCENT_TEAL,
             SandboxTool::Tile(Tile::Distill) => ACCENT_GREEN,
+            SandboxTool::Tile(Tile::Repeater) => ACCENT_CYAN,
             SandboxTool::Tile(Tile::Eve) => ACCENT_RED,
             SandboxTool::Tile(Tile::Wall) => Color32::from_rgb(130, 148, 175),
             SandboxTool::EmitterIon => ACCENT_RED,
@@ -376,6 +381,7 @@ impl SandboxTool {
             SandboxTool::Tile(Tile::PmdFiber) => "PMD_FIBER",
             SandboxTool::Tile(Tile::Atmos) => "ATMOS",
             SandboxTool::Tile(Tile::Distill) => "DISTILL",
+            SandboxTool::Tile(Tile::Repeater) => "REPEATER",
             SandboxTool::Tile(Tile::Eve) => "EVE",
             SandboxTool::Tile(Tile::Wall) => "WALL",
             SandboxTool::EmitterIon => "ION",

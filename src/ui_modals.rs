@@ -28,6 +28,7 @@ fn tile_for_doc_key(key: &str) -> Option<Tile> {
         "PMD_FIBER" => Some(Tile::PmdFiber),
         "ATMOS" => Some(Tile::Atmos),
         "DISTILL" => Some(Tile::Distill),
+        "REPEATER" => Some(Tile::Repeater),
         "EVE" => Some(Tile::Eve),
         "WALL" => Some(Tile::Wall),
         _ => None,

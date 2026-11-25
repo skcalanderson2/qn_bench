@@ -104,6 +104,9 @@ pub struct Photon {
     pub arrival_tick: Option<u32>,
     pub distill_tick: Option<u32>,
     pub distill_pos: Option<(i32, i32)>,
+    pub repeater_tick: Option<u32>,
+    pub repeater_pos: Option<(i32, i32)>,
+    pub repeater_pol: Option<Pol>,
     pub delay_timer: u32,
     pub speed: f32,
     pub qkd_pair_id: Option<usize>,
@@ -134,6 +137,9 @@ impl Photon {
             arrival_tick: None,
             distill_tick: None,
             distill_pos: None,
+            repeater_tick: None,
+            repeater_pos: None,
+            repeater_pol: None,
             delay_timer: 0,
             speed: 4.0,
             qkd_pair_id: None,
@@ -184,6 +190,7 @@ pub struct BenchSim {
     pub hom_signed_ps: Option<i32>,
     pub pol_mismatch: bool,
     pub distill_fired: bool,
+    pub repeater_fired: bool,
     pub sim_state: SimState,
     pub status_msg: String,
     pub status_color: Color32,
@@ -230,6 +237,7 @@ impl BenchSim {
             hom_signed_ps: None,
             pol_mismatch: false,
             distill_fired: false,
+            repeater_fired: false,
             sim_state: SimState::Ready,
             status_msg: String::new(),
             status_color: TEXT_WHITE,
@@ -327,6 +335,7 @@ impl BenchSim {
         self.hom_signed_ps = None;
         self.pol_mismatch = false;
         self.distill_fired = false;
+        self.repeater_fired = false;
         self.qkd_burst_remaining = 0;
         self.qkd_burst_idx = 0;
         self.qkd_last_drop_msg = None;
@@ -567,6 +576,7 @@ impl BenchSim {
         self.hom_signed_ps = None;
         self.pol_mismatch = false;
         self.distill_fired = false;
+        self.repeater_fired = false;
         self.qkd_burst_remaining = 0;
         self.qkd_burst_idx = 0;
         self.qkd_last_drop_msg = None;
@@ -655,6 +665,7 @@ impl BenchSim {
         self.hom_signed_ps = None;
         self.pol_mismatch = false;
         self.distill_fired = false;
+        self.repeater_fired = false;
         self.qkd_last_drop_msg = None;
         self.photons.clear();
         self.paused = false;
@@ -830,6 +841,7 @@ impl BenchSim {
             }
 
             self.process_distillation();
+            self.process_repeater();
             self.evaluate_simulation();
         }
 
@@ -1186,6 +1198,42 @@ impl BenchSim {
                 self.spawn_fx("ring", px, py, ACCENT_GREEN, 10);
                 Some(format!("Distill: Photon {pid} buffered at Purifier ({fid}%)."))
             }
+            Tile::Repeater => {
+                self.photons[idx].alive = false;
+                let wl = self.photons[idx].wavelength;
+                let noise = self.photons[idx].noise;
+                let fid = self.photons[idx].fidelity;
+                let pol = self.photons[idx].pol;
+                if wl != 1550 {
+                    self.spawn_fx("burst", px, py, ACCENT_RED, 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: REPEATER requires 1550nm, Photon {pid} arrived at {wl}nm!"
+                    ));
+                }
+                if noise > 10 {
+                    self.spawn_fx("burst", px, py, ACCENT_AMBER, 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: REPEATER BSM latched by Photon {pid} Raman noise ({noise})!"
+                    ));
+                }
+                if fid < 60 {
+                    self.spawn_fx("burst", px, py, ACCENT_RED, 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: Photon {pid} fidelity ({fid}%) too low for Hop-1 BSM swap."
+                    ));
+                }
+                self.photons[idx].repeater_tick = Some(self.tick);
+                self.photons[idx].repeater_pos = Some((cx, cy));
+                self.photons[idx].repeater_pol = Some(pol);
+                self.spawn_fx("ring", px, py, ACCENT_CYAN, 10);
+                Some(format!(
+                    "Repeater: Hop-1 Photon {pid} buffered ({fid}%, pol '{}').",
+                    pol.as_str()
+                ))
+            }
             Tile::Placeable(Placeable::MirrorSlash) => {
                 self.photons[idx].dir = self.photons[idx].dir.reflect_slash();
                 self.spawn_fx("spark", px, py, TEXT_WHITE, if is_qkd { 3 } else { 6 });
@@ -1247,6 +1295,61 @@ impl BenchSim {
                     "FAILURE: Distillation timing mismatch ({delta_ps}ps > 15ps). Use Delay Line."
                 );
                 self.status_color = ACCENT_RED;
+            }
+        }
+    }
+
+    fn process_repeater(&mut self) {
+        if self.repeater_fired {
+            return;
+        }
+        let buffered: Vec<(u32, (i32, i32), Pol)> = self
+            .photons
+            .iter()
+            .filter_map(|p| Some((p.repeater_tick?, p.repeater_pos?, p.repeater_pol?)))
+            .collect();
+        if buffered.len() >= 2 {
+            self.repeater_fired = true;
+            let (t1, (rx, ry), pol1) = buffered[0];
+            let (t2, _, pol2) = buffered[1];
+            let delta_frames = t1.abs_diff(t2);
+            let delta_ps = delta_frames * 5;
+            self.hom_delta_ps = Some(delta_ps as i32);
+            self.hom_signed_ps = Some((t1 as i32 - t2 as i32) * 5);
+            let rcx = rx as f32 * TILE_SIZE + 40.0;
+            let rcy = ry as f32 * TILE_SIZE + 40.0;
+            if delta_frames > 3 {
+                self.spawn_fx("burst", rcx, rcy, ACCENT_AMBER, 16);
+                self.pending_sfx.push(SfxEvent::Fail);
+                self.status_msg = format!(
+                    "FAILURE: Repeater Hop-1 timing mismatch ({delta_ps}ps > 15ps). Use Delay Line."
+                );
+                self.status_color = ACCENT_RED;
+            } else if pol1 != pol2 {
+                self.pol_mismatch = true;
+                self.spawn_fx("burst", rcx, rcy, ACCENT_PURPLE, 18);
+                self.pending_sfx.push(SfxEvent::Fail);
+                self.status_msg = format!(
+                    "FAILURE: Repeater Hop-1 polarization mismatch ('{}' vs '{}')! Add HWP.",
+                    pol1.as_str(),
+                    pol2.as_str()
+                );
+                self.status_color = ACCENT_RED;
+            } else {
+                let mut heralded = Photon::new("H", rx, ry, Dir::Right, 1550);
+                heralded.fidelity = 100;
+                heralded.pol = pol1;
+                heralded.fid_history = vec![(self.tick, 100, 1550)];
+                heralded.noise_history = vec![(self.tick, 0)];
+                self.photons.push(heralded);
+                self.spawn_fx("ring", rcx, rcy, ACCENT_CYAN, 18);
+                self.spawn_fx("ring", rcx, rcy, ACCENT_AMBER, 10);
+                self.pending_sfx.push(SfxEvent::BsmOk);
+                self.status_msg = format!(
+                    "HERALDED SWAP: Hop-1 BSM locked (dt:{delta_ps}ps, pol:'{}') -> Hop-2 qubit H released!",
+                    pol1.as_str()
+                );
+                self.status_color = ACCENT_CYAN;
             }
         }
     }
@@ -1338,6 +1441,24 @@ impl BenchSim {
             self.status_msg = "Beam trace finished (place a detector in Sources & RX to test lock criteria).".to_string();
             self.status_color = ACCENT_CYAN;
             return;
+        }
+
+        if lvl.mode == TargetMode::Single && (self.repeater_fired || self.distill_fired) {
+            if let Some(p) = self.photons.iter().rev().find(|p| p.arrived) {
+                self.status_msg = format!(
+                    "SUCCESS! Heralded 1550nm detected | Noise: {} | Fidelity: {}%",
+                    p.noise, p.fidelity
+                );
+                self.status_color = ACCENT_GREEN;
+                self.sim_state = SimState::Locked;
+                self.level_complete = true;
+                if !self.sandbox_mode {
+                    self.completed_levels.insert(self.level_idx);
+                }
+                self.pending_sfx.push(SfxEvent::SnspdOk);
+                self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 20);
+                return;
+            }
         }
 
         if self.photons.is_empty() || !self.photons.iter().all(|p| p.arrived) {
@@ -1463,7 +1584,7 @@ mod tests {
     }
 
     #[test]
-    fn all_14_levels_solvable_and_physics_enforced() {
+    fn all_16_levels_solvable_and_physics_enforced() {
         use Placeable::*;
 
         // L1: fail without QFC, solve with QFC + VBG
@@ -1559,6 +1680,99 @@ mod tests {
         );
         assert_eq!(l14_ok.sim_state, SimState::Locked);
         assert!(l14_ok.qkd_session.as_ref().unwrap().chsh_s.unwrap() > 2.8);
+
+        // L15: Multi-Hop Repeater Chain
+        // Without Delay (timing mismatch) -> Fault
+        let l15_no_delay = run_level(
+            14,
+            &[
+                (Qfc, 1, 0), (Vbg, 2, 0), (MirrorBack, 5, 0), (Hwp, 5, 1),
+                (Qfc, 1, 5), (Vbg, 2, 5), (Vbg, 4, 5), (MirrorSlash, 5, 5),
+                (MirrorSlash, 8, 3), (Vbg, 8, 2), (Memory, 8, 1), (MirrorSlash, 8, 0),
+            ],
+            None,
+        );
+        assert_eq!(l15_no_delay.sim_state, SimState::Fault);
+
+        // Without HWP (polarization mismatch at Hop-1 Repeater) -> Fault
+        let l15_no_hwp = run_level(
+            14,
+            &[
+                (Qfc, 1, 0), (Vbg, 2, 0), (MirrorBack, 5, 0),
+                (Qfc, 1, 5), (Vbg, 2, 5), (Vbg, 4, 5), (MirrorSlash, 5, 5), (Delay, 5, 4),
+                (MirrorSlash, 8, 3), (Vbg, 8, 2), (Memory, 8, 1), (MirrorSlash, 8, 0),
+            ],
+            None,
+        );
+        assert_eq!(l15_no_hwp.sim_state, SimState::Fault);
+        assert!(l15_no_hwp.pol_mismatch);
+
+        // Without Memory on Hop-2 (80% < 90% QPU threshold) -> Fault
+        let l15_no_mem = run_level(
+            14,
+            &[
+                (Qfc, 1, 0), (Vbg, 2, 0), (MirrorBack, 5, 0), (Hwp, 5, 1),
+                (Qfc, 1, 5), (Vbg, 2, 5), (Vbg, 4, 5), (MirrorSlash, 5, 5), (Delay, 5, 4),
+                (MirrorSlash, 8, 3), (Vbg, 8, 2), (MirrorSlash, 8, 0),
+            ],
+            None,
+        );
+        assert_eq!(l15_no_mem.sim_state, SimState::Fault);
+
+        // Full Level 15 Solution -> Hop-1 BSM heralded swap + Hop-2 QPU >=90% Locked!
+        let l15_ok = run_level(
+            14,
+            &[
+                (Qfc, 1, 0), (Vbg, 2, 0), (MirrorBack, 5, 0), (Hwp, 5, 1),
+                (Qfc, 1, 5), (Vbg, 2, 5), (Vbg, 4, 5), (MirrorSlash, 5, 5), (Delay, 5, 4),
+                (MirrorSlash, 8, 3), (Vbg, 8, 2), (Memory, 8, 1), (MirrorSlash, 8, 0),
+            ],
+            None,
+        );
+        assert_eq!(l15_ok.sim_state, SimState::Locked);
+        assert!(l15_ok.repeater_fired);
+
+        // L16: Satellite E91 QKD (Grand Finale)
+        // Going straight through Eve -> Fault (Eve detected, key aborted)
+        let l16_eve = run_level(
+            15,
+            &[
+                (Ao, 3, 1), (Qfc, 2, 1), (MirrorSlash, 1, 1), (Vbg, 1, 4),
+                (Ao, 5, 1), (Qfc, 8, 1), (MirrorBack, 9, 1), (Vbg, 9, 2),
+            ],
+            Some(999),
+        );
+        assert_eq!(l16_eve.sim_state, SimState::Fault);
+        assert!(l16_eve.qkd_session.as_ref().unwrap().eve_intercepts > 0);
+
+        // Bypassing Eve WITHOUT HWP -> Fault (PMD causes QBER ~50%)
+        let l16_no_hwp = run_level(
+            15,
+            &[
+                (Ao, 3, 1), (Qfc, 2, 1), (MirrorSlash, 1, 1), (Vbg, 1, 4),
+                (Ao, 5, 1), (Qfc, 8, 1), (MirrorBack, 9, 1), (MirrorSlash, 9, 2),
+                (Vbg, 7, 2), (MirrorSlash, 6, 2), (MirrorBack, 6, 5),
+            ],
+            Some(999),
+        );
+        assert_eq!(l16_no_hwp.sim_state, SimState::Fault);
+
+        // Full Level 16 Solution -> Both AO downlinks + Eve bypass + LitFiber VBG + PMD HWP -> AES-256 Locked!
+        let l16_ok = run_level(
+            15,
+            &[
+                (Ao, 3, 1), (Qfc, 2, 1), (MirrorSlash, 1, 1), (Vbg, 1, 4),
+                (Ao, 5, 1), (Qfc, 8, 1), (MirrorBack, 9, 1), (MirrorSlash, 9, 2),
+                (Vbg, 7, 2), (MirrorSlash, 6, 2), (Hwp, 6, 4), (MirrorBack, 6, 5),
+            ],
+            Some(999),
+        );
+        assert_eq!(l16_ok.sim_state, SimState::Locked);
+        assert!(l16_ok.qkd_session.as_ref().unwrap().chsh_s.unwrap() > 2.8);
+        assert_eq!(
+            l16_ok.qkd_session.as_ref().unwrap().decrypted_text,
+            l16_ok.qkd_plaintext
+        );
     }
 
     #[test]

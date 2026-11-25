@@ -58,6 +58,9 @@ Preserve these physical constraints when adding levels or components:
   * **Level 12 (BB84 QKD & AES-256):** Introduces prepare-and-measure BB84 QKD (`QKD TX` → `BOB RX`), requiring `QFC`, `VBG`, and `HWP` (to fix `PMD_FIBER` polarization basis drift) so `QBER <= 11%` and a real FIPS-197 AES-256 key is derived.
   * **Level 13 (Entangled QKD / E91):** Introduces a central `EPR` entangled Bell-pair source distributing pairs simultaneously to `ALICE RX` and `BOB RX`, verifying Bell violation (`CHSH S > 2.0`) and identical AES-256 key derivation on both ends.
   * **Level 14 (Eavesdropper & AES Link):** Introduces an `EVE` intercept-resend fiber tap (`QBER ~25%`, `CHSH S <= 2.0`, key aborted) requiring players to bypass Eve via 45° mirrors to establish a secure AES-256 channel.
+  * **Level 15 (Multi-Hop Repeater Chain):** Introduces the heralded `REPEATER` node (Hop-1 BSM checking `dt <= 15ps` and matching polarization `pol A == pol B`), triggering a classical feedforward herald that releases a fresh `100%` fidelity Hop-2 `1550nm` qubit through `LIT_FIBER` into a fault-tolerant `QPU >=90%`.
+  * **Level 16 (Satellite E91 QKD):** Grand Finale combining an orbital `EPR` source, dual `ATMOS` + `AO` downlinks, an `EVE` tap bypass through `LIT_FIBER` (`VBG` after lit fiber) and `PMD_FIBER` (`HWP`), and live `CHSH S > 2.0` + FIPS-197 AES-256 encryption.
+  * **Interactive Free-Build Sandbox Mode (`S` key / `SANDBOX` pill):** Unlimited optics, channels, rotatable emitters, EPR sources, all 5 detector modes, starter templates, campaign cloning, and portable JSON blueprint sharing.
 * **Graphics, Audio & UX:**
   * Machined optical breadboard grid with mounting holes and hover precision reticle (`gx,gy`).
   * Custom schematic renderers for all hardware components, including emitter direction chevrons.

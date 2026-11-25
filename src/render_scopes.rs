@@ -48,10 +48,10 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
     let lvl_mode = sim.current_level().mode;
     let total_levels = sim.levels.len();
 
-    // Header row: Level title, clickable pills 1..14 + SANDBOX, speed/pause controls, clock, status badge
+    // Header row: Level title, clickable pills 1..16 + SANDBOX, speed/pause controls, clock, status badge
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-        ui.label(egui::RichText::new(header_title).strong().size(15.0).color(header_col));
+        ui.spacing_mut().item_spacing.x = 5.0;
+        ui.add(egui::Label::new(egui::RichText::new(header_title).strong().size(14.0).color(header_col)).truncate());
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Status badge
@@ -128,11 +128,11 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
                 let bg = if is_cur { Color32::from_rgb(36, 56, 78) } else { Color32::from_rgb(18, 24, 34) };
                 let bd = if is_cur { ACCENT_CYAN } else if is_done { ACCENT_GREEN } else { GRID_LINE };
                 let fg = if is_cur { TEXT_WHITE } else if is_done { ACCENT_GREEN } else { TEXT_MUTED };
-                let btn = egui::Button::new(egui::RichText::new(format!("{}", i + 1)).strong().size(10.0).color(fg))
+                let btn = egui::Button::new(egui::RichText::new(format!("{}", i + 1)).strong().size(9.5).color(fg))
                     .fill(bg)
                     .stroke(Stroke::new(1.0_f32, bd))
                     .corner_radius(CornerRadius::same(4))
-                    .min_size(Vec2::new(19.0, 20.0));
+                    .min_size(Vec2::new(17.5, 20.0));
                 if ui.add(btn).on_hover_text(sim.levels[i].title).clicked() {
                     action.jump_level = Some(i);
                 }

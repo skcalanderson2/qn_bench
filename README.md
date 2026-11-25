@@ -38,7 +38,7 @@ Native macOS and Windows builds check GitHub Releases in the background on start
 # Run native desktop app
 cargo run --release
 
-# Run physics & NIST FIPS-197 AES-256 test suite (all 14 levels)
+# Run physics & NIST FIPS-197 AES-256 test suite (all 16 levels + Sandbox)
 cargo test
 
 # Run locally in browser (WebAssembly via Trunk)
@@ -56,7 +56,7 @@ trunk serve --public-url /
 * **P** — Pause / resume simulation (use `0.5x` / `1x` / `2x` pill to adjust speed)
 * **R** — Reset current level (or stop/reset beam in Sandbox Mode)
 * **H** — Open Experiment Briefing (or Sandbox Templates / JSON Blueprints modal)
-* **K** — Open QKD & AES-256 Inspector (on Levels 12–14 or Sandbox QKD benches)
+* **K** — Open QKD & AES-256 Inspector (on Levels 12–14, 16, or Sandbox QKD benches)
 * **U** — Check for software updates (desktop)
 * **M** — Mute / unmute procedural lab audio
 * **1–9, 0, -, [ / ]** — Switch campaign levels
