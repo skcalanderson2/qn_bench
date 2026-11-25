@@ -82,6 +82,7 @@ pub fn draw_modal_overlay(
             let total_levels = sim.levels.len();
             let mut close = false;
             egui::Window::new("experiment_briefing")
+                .order(egui::Order::Foreground)
                 .title_bar(false)
                 .resizable(false)
                 .collapsible(false)
@@ -188,6 +189,7 @@ pub fn draw_modal_overlay(
             if let Some(doc) = hardware_doc(key) {
                 let mut close = false;
                 egui::Window::new("hardware_spec")
+                    .order(egui::Order::Foreground)
                     .title_bar(false)
                     .resizable(false)
                     .collapsible(false)
@@ -238,6 +240,7 @@ pub fn draw_modal_overlay(
                 _ => ACCENT_CYAN,
             };
             egui::Window::new("qkd_aes_inspector")
+                .order(egui::Order::Foreground)
                 .title_bar(false)
                 .resizable(false)
                 .collapsible(false)
@@ -385,6 +388,7 @@ pub fn draw_modal_overlay(
             let cur_campaign_lvl = sim.levels[sim.level_idx].clone();
             let cur_campaign_num = sim.level_idx + 1;
             egui::Window::new("sandbox_blueprints")
+                .order(egui::Order::Foreground)
                 .title_bar(false)
                 .resizable(false)
                 .collapsible(false)
@@ -542,6 +546,7 @@ pub fn draw_modal_overlay(
             let stars = sim.total_stars();
             let max_stars = (total * 3) as u32;
             egui::Window::new("quantum_lab_report")
+                .order(egui::Order::Foreground)
                 .title_bar(false)
                 .resizable(false)
                 .collapsible(false)
@@ -661,6 +666,7 @@ pub fn draw_modal_overlay(
                     _ => ACCENT_CYAN,
                 };
                 egui::Window::new("software_update")
+                    .order(egui::Order::Foreground)
                     .title_bar(false)
                     .resizable(false)
                     .collapsible(false)
