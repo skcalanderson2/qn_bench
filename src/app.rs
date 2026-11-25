@@ -80,6 +80,25 @@ impl QnBenchApp {
         sim.align_laser = saved.align_laser;
         sim.seen_briefings.insert(0);
 
+        #[allow(unused_mut)]
+        let mut initial_overlay = Overlay::Level(0);
+
+        // On WebAssembly, automatically open shared Sandbox URLs (`#bp=<base64url>`)
+        #[cfg(target_arch = "wasm32")]
+        if let Some(hash) = web_sys::window().and_then(|w| w.location().hash().ok()) {
+            if hash.contains("#bp=") {
+                if let Ok(bp) = SandboxBlueprint::from_share_str(&hash) {
+                    let bp_name = bp.name.clone();
+                    if sim.load_sandbox_blueprint(bp).is_ok() {
+                        sim.enter_sandbox();
+                        sim.status_msg = format!("Loaded shared Sandbox blueprint: {bp_name}!");
+                        sim.status_color = ACCENT_GREEN;
+                        initial_overlay = Overlay::None;
+                    }
+                }
+            }
+        }
+
         let sfx = SoundEngine::new(saved.muted);
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -92,7 +111,7 @@ impl QnBenchApp {
         Self {
             sim,
             sfx,
-            overlay: Overlay::Level(0),
+            overlay: initial_overlay,
             accum_dt: 0.0,
             #[cfg(not(target_arch = "wasm32"))]
             updater,

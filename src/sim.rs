@@ -2173,5 +2173,18 @@ mod tests {
             assert!(!lvl.hint_1.is_empty());
             assert!(!lvl.hint_2.is_empty());
         }
+
+        // 7. Shareable Sandbox URL (#bp=...) encode/decode round-trip
+        let bp = SandboxBlueprint::preset_hom_lab();
+        let url = bp.to_share_url().expect("share URL encode");
+        assert!(url.starts_with("https://skcalanderson2.github.io/qn_bench/play/#bp="));
+        let decoded_url = SandboxBlueprint::from_share_str(&url).expect("share URL decode");
+        assert_eq!(decoded_url, bp);
+        let decoded_json = SandboxBlueprint::from_share_str(
+            &serde_json::to_string(&bp).unwrap(),
+        )
+        .expect("raw JSON decode");
+        assert_eq!(decoded_json, bp);
+        assert!(SandboxBlueprint::from_share_str("#bp=!!!invalid!!!").is_err());
     }
 }

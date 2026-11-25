@@ -16,6 +16,7 @@ pub const RELEASES_API_URL: &str =
 pub const RELEASES_PAGE_URL: &str =
     "https://github.com/skcalanderson2/qn_bench/releases/latest";
 pub const DOWNLOAD_PAGE_URL: &str = "https://skcalanderson2.github.io/qn_bench/";
+pub const PLAY_PAGE_URL: &str = "https://skcalanderson2.github.io/qn_bench/play/";
 
 #[cfg(target_os = "windows")]
 pub const PLATFORM_ZIP_NAME: &str = WINDOWS_ZIP_NAME;

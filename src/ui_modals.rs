@@ -434,15 +434,15 @@ pub fn draw_modal_overlay(
                     });
 
                     ui.add_space(10.0);
-                    ui.label(RichText::new("PORTABLE JSON BLUEPRINT (COPY TO SHARE OR PASTE TO IMPORT)").strong().size(11.0).color(ACCENT_AMBER));
+                    ui.label(RichText::new("PORTABLE JSON OR SHARE LINK (COPY LINK TO PLAY IN BROWSER, OR PASTE JSON / URL BELOW)").strong().size(11.0).color(ACCENT_AMBER));
                     ui.add_space(3.0);
 
-                    egui::ScrollArea::vertical().max_height(190.0).show(ui, |ui| {
+                    egui::ScrollArea::vertical().max_height(185.0).show(ui, |ui| {
                         ui.add(
                             egui::TextEdit::multiline(&mut sim.sandbox_json_buf)
                                 .font(egui::TextStyle::Monospace)
                                 .desired_width(f32::INFINITY)
-                                .desired_rows(10),
+                                .desired_rows(9),
                         );
                     });
 
@@ -453,10 +453,27 @@ pub fn draw_modal_overlay(
 
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        let copy_btn = egui::Button::new(RichText::new("COPY JSON").strong().size(12.5).color(ACCENT_CYAN))
+                        let link_btn = egui::Button::new(RichText::new("COPY SHARE LINK").strong().size(12.0).color(BG_DARK))
+                            .fill(ACCENT_PURPLE)
+                            .min_size(Vec2::new(132.0, 34.0));
+                        if ui.add(link_btn).on_hover_text("Copy a playable browser URL (#bp=...) for this custom optical bench").clicked() {
+                            match sim.sandbox_bp.to_share_url() {
+                                Ok(url) => {
+                                    ctx.copy_text(url);
+                                    sim.sandbox_json_msg = Some(("Copied clickable WebAssembly Share Link to clipboard!".to_string(), ACCENT_PURPLE));
+                                    sim.pending_sfx.push(SfxEvent::Select);
+                                }
+                                Err(err) => {
+                                    sim.sandbox_json_msg = Some((format!("Encode error: {err}"), ACCENT_RED));
+                                    sim.pending_sfx.push(SfxEvent::Fail);
+                                }
+                            }
+                        }
+
+                        let copy_btn = egui::Button::new(RichText::new("COPY JSON").strong().size(12.0).color(ACCENT_CYAN))
                             .fill(PANEL_BG)
                             .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
-                            .min_size(Vec2::new(115.0, 34.0));
+                            .min_size(Vec2::new(98.0, 34.0));
                         if ui.add(copy_btn).clicked() {
                             sim.sandbox_json_buf = serde_json::to_string_pretty(&sim.sandbox_bp).unwrap_or_default();
                             ctx.copy_text(sim.sandbox_json_buf.clone());
@@ -464,11 +481,11 @@ pub fn draw_modal_overlay(
                             sim.pending_sfx.push(SfxEvent::Select);
                         }
 
-                        let load_btn = egui::Button::new(RichText::new("LOAD FROM JSON").strong().size(12.5).color(BG_DARK))
+                        let load_btn = egui::Button::new(RichText::new("IMPORT JSON / URL").strong().size(12.0).color(BG_DARK))
                             .fill(ACCENT_GREEN)
-                            .min_size(Vec2::new(145.0, 34.0));
+                            .min_size(Vec2::new(142.0, 34.0));
                         if ui.add(load_btn).clicked() {
-                            match serde_json::from_str::<SandboxBlueprint>(&sim.sandbox_json_buf) {
+                            match SandboxBlueprint::from_share_str(&sim.sandbox_json_buf) {
                                 Ok(bp) => match sim.load_sandbox_blueprint(bp) {
                                     Ok(()) => {
                                         sim.refresh_sandbox_json();
@@ -481,16 +498,16 @@ pub fn draw_modal_overlay(
                                     }
                                 },
                                 Err(err) => {
-                                    sim.sandbox_json_msg = Some((format!("JSON parse error: {err}"), ACCENT_RED));
+                                    sim.sandbox_json_msg = Some((err, ACCENT_RED));
                                     sim.pending_sfx.push(SfxEvent::Fail);
                                 }
                             }
                         }
 
-                        let clr_btn = egui::Button::new(RichText::new("BLANK GRID").strong().size(12.5).color(ACCENT_RED))
+                        let clr_btn = egui::Button::new(RichText::new("BLANK").strong().size(12.0).color(ACCENT_RED))
                             .fill(Color32::from_rgb(44, 20, 26))
                             .stroke(Stroke::new(1.0_f32, ACCENT_RED))
-                            .min_size(Vec2::new(110.0, 34.0));
+                            .min_size(Vec2::new(72.0, 34.0));
                         if ui.add(clr_btn).clicked() {
                             sim.clear_sandbox();
                             sim.refresh_sandbox_json();
@@ -499,10 +516,10 @@ pub fn draw_modal_overlay(
                         }
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let done_btn = egui::Button::new(RichText::new("DONE  [ESC]").strong().size(12.5).color(TEXT_WHITE))
+                            let done_btn = egui::Button::new(RichText::new("DONE").strong().size(12.0).color(TEXT_WHITE))
                                 .fill(PANEL_BG)
                                 .stroke(Stroke::new(1.0_f32, ACCENT_PURPLE))
-                                .min_size(Vec2::new(115.0, 34.0));
+                                .min_size(Vec2::new(82.0, 34.0));
                             if ui.add(done_btn).clicked() {
                                 close = true;
                             }

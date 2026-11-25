@@ -578,6 +578,88 @@ impl SandboxBlueprint {
             inventory: BTreeMap::new(),
         }
     }
+
+    /// Encode this blueprint into a clickable WebAssembly share URL (`https://.../play/#bp=...`).
+    pub fn to_share_url(&self) -> Result<String, String> {
+        let compact = serde_json::to_vec(self).map_err(|e| e.to_string())?;
+        let encoded = b64url_encode(&compact);
+        Ok(format!("{}#bp={encoded}", crate::version::PLAY_PAGE_URL))
+    }
+
+    /// Parse a blueprint from raw JSON, a `#bp=...` fragment, a full share URL, or raw base64url.
+    pub fn from_share_str(raw: &str) -> Result<Self, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err("Empty blueprint input.".to_string());
+        }
+        // Raw JSON object
+        if trimmed.starts_with('{') {
+            let bp: SandboxBlueprint =
+                serde_json::from_str(trimmed).map_err(|e| format!("JSON parse error: {e}"))?;
+            bp.validate()?;
+            return Ok(bp);
+        }
+        // Full URL or `#bp=...` hash fragment
+        let payload = if let Some((_, rhs)) = trimmed.split_once("#bp=") {
+            rhs.split(&['&', ' ', '\n', '\r'][..]).next().unwrap_or("")
+        } else if let Some(rhs) = trimmed.strip_prefix("bp=") {
+            rhs.split(&['&', ' ', '\n', '\r'][..]).next().unwrap_or("")
+        } else {
+            trimmed
+        };
+        let bytes = b64url_decode(payload)?;
+        let bp: SandboxBlueprint =
+            serde_json::from_slice(&bytes).map_err(|e| format!("Blueprint decode error: {e}"))?;
+        bp.validate()?;
+        Ok(bp)
+    }
+}
+
+fn b64url_encode(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity((input.len() * 4 + 2) / 3);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((n >> 18) & 63) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((n >> 6) & 63) as usize] as char);
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(n & 63) as usize] as char);
+        }
+    }
+    out
+}
+
+fn b64url_decode(input: &str) -> Result<Vec<u8>, String> {
+    let mut out = Vec::with_capacity((input.len() * 3) / 4);
+    let mut buf: u32 = 0;
+    let mut bits: u32 = 0;
+    for b in input.bytes() {
+        let val = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'-' | b'+' => 62,
+            b'_' | b'/' => 63,
+            b'=' | b'\n' | b'\r' | b' ' => continue,
+            _ => return Err("Invalid character in share link payload.".to_string()),
+        };
+        buf = (buf << 6) | (val as u32);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((buf >> bits) & 0xFF) as u8);
+        }
+    }
+    if out.is_empty() {
+        return Err("Share link payload is empty.".to_string());
+    }
+    Ok(out)
 }
 
 #[derive(Debug, Clone)]
