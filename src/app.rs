@@ -290,90 +290,102 @@ impl eframe::App for QnBenchApp {
                 ui.label(RichText::new("L-Click: Place  |  R-Click: Remove").size(12.0).color(TEXT_MUTED));
                 ui.add_space(10.0);
 
-                // Component Cards
-                let active = self.sim.active_components();
-                for comp in active {
-                    let count = self.sim.inventory.get(&comp).copied().unwrap_or(0);
-                    let is_sel = self.sim.selected == Some(comp) && count > 0;
-                    let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
-                    let bd = if is_sel { comp.color() } else if count > 0 { GRID_LINE } else { Color32::from_rgb(30, 36, 46) };
+                // Component Cards (scrollable on smaller windows so bottom buttons never clip)
+                let cards_max_h = (ui.available_height() - 196.0).max(80.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("comp_cards_scroll")
+                    .max_height(cards_max_h)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        let active = self.sim.active_components();
+                        for comp in active {
+                            let count = self.sim.inventory.get(&comp).copied().unwrap_or(0);
+                            let is_sel = self.sim.selected == Some(comp) && count > 0;
+                            let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
+                            let bd = if is_sel { comp.color() } else if count > 0 { GRID_LINE } else { Color32::from_rgb(30, 36, 46) };
 
-                    let frame_resp = egui::Frame::NONE
-                        .fill(bg)
-                        .stroke(Stroke::new(if is_sel { 2.0_f32 } else { 1.0_f32 }, bd))
-                        .corner_radius(CornerRadius::same(6))
-                        .inner_margin(egui::Margin::symmetric(10, 7))
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    let tcol = if count > 0 { comp.color() } else { TEXT_MUTED };
-                                    ui.label(RichText::new(format!("{} (x{count})", comp.name())).strong().size(14.0).color(tcol));
-                                    ui.label(RichText::new(comp.desc()).size(11.5).color(TEXT_MUTED));
-                                });
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                                    let q_btn = egui::Button::new(RichText::new("?").strong().size(11.0).color(ACCENT_CYAN))
-                                        .fill(Color32::from_rgb(20, 28, 42))
-                                        .stroke(Stroke::new(1.0_f32, GRID_LINE))
-                                        .corner_radius(CornerRadius::same(11))
-                                        .min_size(Vec2::splat(22.0));
-                                    if ui.add(q_btn).on_hover_text("Hardware Physics & Tip").clicked() {
-                                        self.overlay = Overlay::Comp(comp.doc_key());
-                                        self.sfx.play(SfxEvent::Select);
-                                    }
-                                });
-                            });
-                        })
-                        .response;
+                            let frame_resp = egui::Frame::NONE
+                                .fill(bg)
+                                .stroke(Stroke::new(if is_sel { 2.0_f32 } else { 1.0_f32 }, bd))
+                                .corner_radius(CornerRadius::same(6))
+                                .inner_margin(egui::Margin::symmetric(10, 7))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.horizontal(|ui| {
+                                        ui.vertical(|ui| {
+                                            let tcol = if count > 0 { comp.color() } else { TEXT_MUTED };
+                                            ui.label(RichText::new(format!("{} (x{count})", comp.name())).strong().size(14.0).color(tcol));
+                                            ui.label(RichText::new(comp.desc()).size(11.5).color(TEXT_MUTED));
+                                        });
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                            let q_btn = egui::Button::new(RichText::new("?").strong().size(11.0).color(ACCENT_CYAN))
+                                                .fill(Color32::from_rgb(20, 28, 42))
+                                                .stroke(Stroke::new(1.0_f32, GRID_LINE))
+                                                .corner_radius(CornerRadius::same(11))
+                                                .min_size(Vec2::splat(22.0));
+                                            if ui.add(q_btn).on_hover_text("Hardware Physics & Tip").clicked() {
+                                                self.overlay = Overlay::Comp(comp.doc_key());
+                                                self.sfx.play(SfxEvent::Select);
+                                            }
+                                        });
+                                    });
+                                })
+                                .response;
 
-                    let card_click = ui.interact(frame_resp.rect, ui.id().with(("comp_card", comp)), egui::Sense::click());
-                    if card_click.clicked() && count > 0 && self.overlay == Overlay::None {
-                        self.sim.selected = Some(comp);
-                        self.sfx.play(SfxEvent::Select);
-                    }
-                    ui.add_space(6.0);
-                }
+                            let card_click = ui.interact(frame_resp.rect, ui.id().with(("comp_card", comp)), egui::Sense::click());
+                            if card_click.clicked() && count > 0 && self.overlay == Overlay::None {
+                                self.sim.selected = Some(comp);
+                                self.sfx.play(SfxEvent::Select);
+                            }
+                            ui.add_space(6.0);
+                        }
+                    });
 
                 // Bottom-anchored actions inside sidebar
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.y = 8.0;
 
-                    // Prev / Next Level Row
-                    ui.horizontal(|ui| {
-                        let can_prev = self.sim.level_idx > 0;
-                        let prev_btn = egui::Button::new(
-                            RichText::new("<- PREV")
-                                .strong()
-                                .size(13.5)
-                                .color(if can_prev { TEXT_WHITE } else { TEXT_MUTED }),
-                        )
-                        .fill(if can_prev { PANEL_BG } else { Color32::from_rgb(24, 30, 42) })
-                        .stroke(Stroke::new(1.0_f32, if can_prev { GRID_LINE } else { Color32::from_rgb(34, 40, 52) }))
-                        .corner_radius(CornerRadius::same(6))
-                        .min_size(Vec2::new(92.0, 40.0));
-                        if ui.add_enabled(can_prev, prev_btn).clicked() {
-                            self.sfx.play(SfxEvent::Select);
-                            let p = self.sim.level_idx - 1;
-                            self.switch_level(p, None);
-                        }
+                    // Prev / Next Level Row (declare full 40px height upfront so bottom_up never clips)
+                    let row_w = ui.available_width();
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(row_w, 40.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            let can_prev = self.sim.level_idx > 0;
+                            let prev_btn = egui::Button::new(
+                                RichText::new("<- PREV")
+                                    .strong()
+                                    .size(13.5)
+                                    .color(if can_prev { TEXT_WHITE } else { TEXT_MUTED }),
+                            )
+                            .fill(if can_prev { PANEL_BG } else { Color32::from_rgb(24, 30, 42) })
+                            .stroke(Stroke::new(1.0_f32, if can_prev { GRID_LINE } else { Color32::from_rgb(34, 40, 52) }))
+                            .corner_radius(CornerRadius::same(6))
+                            .min_size(Vec2::new(92.0, 40.0));
+                            if ui.add_enabled(can_prev, prev_btn).clicked() {
+                                self.sfx.play(SfxEvent::Select);
+                                let p = self.sim.level_idx - 1;
+                                self.switch_level(p, None);
+                            }
 
-                        let done = self.sim.level_complete;
-                        let next_lbl = if done { "NEXT LEVEL ->" } else { "SOLVE TO ADVANCE" };
-                        let next_btn = egui::Button::new(
-                            RichText::new(next_lbl)
-                                .strong()
-                                .size(13.5)
-                                .color(if done { BG_DARK } else { TEXT_MUTED }),
-                        )
-                        .fill(if done { ACCENT_GREEN } else { Color32::from_rgb(30, 38, 50) })
-                        .corner_radius(CornerRadius::same(6))
-                        .min_size(Vec2::new(ui.available_width(), 40.0));
-                        if ui.add_enabled(done, next_btn).clicked() {
-                            self.sfx.play(SfxEvent::Select);
-                            let n = (self.sim.level_idx + 1) % self.sim.levels.len();
-                            self.switch_level(n, None);
-                        }
-                    });
+                            let done = self.sim.level_complete;
+                            let next_lbl = if done { "NEXT LEVEL ->" } else { "SOLVE TO ADVANCE" };
+                            let next_btn = egui::Button::new(
+                                RichText::new(next_lbl)
+                                    .strong()
+                                    .size(13.5)
+                                    .color(if done { BG_DARK } else { TEXT_MUTED }),
+                            )
+                            .fill(if done { ACCENT_GREEN } else { Color32::from_rgb(30, 38, 50) })
+                            .corner_radius(CornerRadius::same(6))
+                            .min_size(Vec2::new(ui.available_width(), 40.0));
+                            if ui.add_enabled(done, next_btn).clicked() {
+                                self.sfx.play(SfxEvent::Select);
+                                let n = (self.sim.level_idx + 1) % self.sim.levels.len();
+                                self.switch_level(n, None);
+                            }
+                        },
+                    );
 
                     // Reset Level button
                     let reset_btn = egui::Button::new(RichText::new("RESET LEVEL  [R]").strong().size(13.5).color(TEXT_WHITE))
