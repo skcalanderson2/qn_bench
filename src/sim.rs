@@ -97,6 +97,7 @@ pub struct Photon {
     pub fidelity: i32,
     pub pol: Pol,
     pub pmd_flips: u32,
+    pub dispersion: u32,
     pub eve_tapped: bool,
     pub ao_locked: bool,
     pub alive: bool,
@@ -107,6 +108,8 @@ pub struct Photon {
     pub repeater_tick: Option<u32>,
     pub repeater_pos: Option<(i32, i32)>,
     pub repeater_pol: Option<Pol>,
+    pub tele_tick: Option<u32>,
+    pub tele_pos: Option<(i32, i32)>,
     pub delay_timer: u32,
     pub speed: f32,
     pub qkd_pair_id: Option<usize>,
@@ -130,6 +133,7 @@ impl Photon {
             fidelity: 100,
             pol: Pol::Plus,
             pmd_flips: 0,
+            dispersion: 0,
             eve_tapped: false,
             ao_locked: false,
             alive: true,
@@ -140,6 +144,8 @@ impl Photon {
             repeater_tick: None,
             repeater_pos: None,
             repeater_pol: None,
+            tele_tick: None,
+            tele_pos: None,
             delay_timer: 0,
             speed: 4.0,
             qkd_pair_id: None,
@@ -205,6 +211,8 @@ pub struct BenchSim {
     pub pol_mismatch: bool,
     pub distill_fired: bool,
     pub repeater_fired: bool,
+    pub teleport_heralded: bool,
+    pub teleport_checked: bool,
     pub sim_state: SimState,
     pub status_msg: String,
     pub status_color: Color32,
@@ -256,6 +264,8 @@ impl BenchSim {
             pol_mismatch: false,
             distill_fired: false,
             repeater_fired: false,
+            teleport_heralded: false,
+            teleport_checked: false,
             sim_state: SimState::Ready,
             status_msg: String::new(),
             status_color: TEXT_WHITE,
@@ -430,13 +440,14 @@ impl BenchSim {
                          start_y: i32,
                          start_dir: Dir,
                          start_wl: u32,
+                         start_pol: Pol,
                          hop2_out: &mut Vec<(i32, i32, &'static str)>|
          -> AlignmentBeam {
             let mut x = start_x;
             let mut y = start_y;
             let mut dir = start_dir;
             let mut wl = start_wl;
-            let mut pol = Pol::Plus;
+            let mut pol = start_pol;
             let mut tiles = 0usize;
             let mut delay_tiles = 0usize;
             let mut blocked = false;
@@ -471,7 +482,7 @@ impl BenchSim {
                             blocked = true;
                             break;
                         }
-                        Tile::Fiber | Tile::LitFiber | Tile::PmdFiber => {
+                        Tile::Fiber | Tile::LitFiber | Tile::PmdFiber | Tile::CdFiber => {
                             if wl != 1550 {
                                 blocked = true;
                                 break;
@@ -488,6 +499,11 @@ impl BenchSim {
                         }
                         Tile::Placeable(Placeable::Hwp) => {
                             pol = pol.flipped();
+                        }
+                        Tile::Placeable(Placeable::Wdm) => {
+                            if wl != 1550 {
+                                dir = dir.reflect_back();
+                            }
                         }
                         Tile::Placeable(Placeable::MirrorSlash) => {
                             dir = dir.reflect_slash();
@@ -511,6 +527,12 @@ impl BenchSim {
                             }
                             break;
                         }
+                        Tile::TeleportBsm => {
+                            if wl != 1550 {
+                                blocked = true;
+                            }
+                            break;
+                        }
                         _ => {}
                     }
                 }
@@ -529,17 +551,23 @@ impl BenchSim {
         };
 
         for (i, e) in lvl.emitters.iter().enumerate() {
-            let lbl = if lvl.epr_source.is_some() {
+            let lbl = if lvl.mode == TargetMode::Teleport {
+                match i {
+                    0 => "Psi".to_string(),
+                    1 => "E_A".to_string(),
+                    _ => "E_B".to_string(),
+                }
+            } else if lvl.epr_source.is_some() {
                 if i == 0 { "A".to_string() } else { "B".to_string() }
             } else {
                 ((b'A' + i as u8) as char).to_string()
             };
-            beams.push(trace_one(lbl, e.gx, e.gy, e.dir, e.wavelength, &mut hop2_origins));
+            beams.push(trace_one(lbl, e.gx, e.gy, e.dir, e.wavelength, e.pol, &mut hop2_origins));
         }
 
         let mut dummy = Vec::new();
         for (hx, hy, hlbl) in hop2_origins {
-            beams.push(trace_one(hlbl.to_string(), hx, hy, Dir::Right, 1550, &mut dummy));
+            beams.push(trace_one(hlbl.to_string(), hx, hy, Dir::Right, 1550, Pol::Plus, &mut dummy));
         }
 
         beams
@@ -562,6 +590,8 @@ impl BenchSim {
         self.pol_mismatch = false;
         self.distill_fired = false;
         self.repeater_fired = false;
+        self.teleport_heralded = false;
+        self.teleport_checked = false;
         self.qkd_burst_remaining = 0;
         self.qkd_burst_idx = 0;
         self.qkd_last_drop_msg = None;
@@ -632,8 +662,8 @@ impl BenchSim {
                 (Dir::Left, Dir::Right)
             };
             self.sandbox_bp.emitters = vec![
-                EmitterDef { gx, gy, dir: d1, wavelength: 780 },
-                EmitterDef { gx, gy, dir: d2, wavelength: 780 },
+                EmitterDef { gx, gy, dir: d1, wavelength: 780, pol: Pol::Plus },
+                EmitterDef { gx, gy, dir: d2, wavelength: 780, pol: Pol::Plus },
             ];
             self.sync_sandbox_from_bp();
             self.pending_sfx.push(SfxEvent::Place);
@@ -680,6 +710,7 @@ impl BenchSim {
                     gy,
                     dir: self.sandbox_dir,
                     wavelength: wl,
+                    pol: Pol::Plus,
                 });
             }
             SandboxTool::EprSource => {
@@ -692,8 +723,8 @@ impl BenchSim {
                     (Dir::Left, Dir::Right)
                 };
                 self.sandbox_bp.emitters = vec![
-                    EmitterDef { gx, gy, dir: d1, wavelength: 780 },
-                    EmitterDef { gx, gy, dir: d2, wavelength: 780 },
+                    EmitterDef { gx, gy, dir: d1, wavelength: 780, pol: Pol::Plus },
+                    EmitterDef { gx, gy, dir: d2, wavelength: 780, pol: Pol::Plus },
                 ];
             }
             SandboxTool::DetectorSnspd => {
@@ -813,6 +844,8 @@ impl BenchSim {
         self.pol_mismatch = false;
         self.distill_fired = false;
         self.repeater_fired = false;
+        self.teleport_heralded = false;
+        self.teleport_checked = false;
         self.qkd_burst_remaining = 0;
         self.qkd_burst_idx = 0;
         self.qkd_last_drop_msg = None;
@@ -905,6 +938,8 @@ impl BenchSim {
         self.pol_mismatch = false;
         self.distill_fired = false;
         self.repeater_fired = false;
+        self.teleport_heralded = false;
+        self.teleport_checked = false;
         self.qkd_last_drop_msg = None;
         self.photons.clear();
         self.paused = false;
@@ -961,8 +996,16 @@ impl BenchSim {
         let mut wl_tags = Vec::new();
         for (i, e) in lvl.emitters.iter().enumerate() {
             let pid = ((b'A' + i as u8) as char).to_string();
-            self.photons.push(Photon::new(pid, e.gx, e.gy, e.dir, e.wavelength));
-            let fx_col = if e.wavelength == 637 { ACCENT_ORANGE } else { ACCENT_RED };
+            let mut ph = Photon::new(pid, e.gx, e.gy, e.dir, e.wavelength);
+            ph.pol = e.pol;
+            self.photons.push(ph);
+            let fx_col = if e.pol == Pol::Cross {
+                ACCENT_PURPLE
+            } else if e.wavelength == 637 {
+                ACCENT_ORANGE
+            } else {
+                ACCENT_RED
+            };
             self.spawn_fx(
                 "ring",
                 e.gx as f32 * TILE_SIZE + 40.0,
@@ -1081,6 +1124,7 @@ impl BenchSim {
 
             self.process_distillation();
             self.process_repeater();
+            self.process_teleport();
             self.evaluate_simulation();
         }
 
@@ -1185,6 +1229,7 @@ impl BenchSim {
             let wl = self.photons[idx].wavelength;
             let noise = self.photons[idx].noise;
             let fid = self.photons[idx].fidelity;
+            let disp = self.photons[idx].dispersion;
 
             if wl != 1550 {
                 self.spawn_fx("burst", px, py, ACCENT_RED, if is_qkd { 8 } else { 18 });
@@ -1204,6 +1249,16 @@ impl BenchSim {
                 }
                 return Some(format!(
                     "FAILURE: Detector latched by Photon {pid} Raman noise ({noise})! Add VBG Filter."
+                ));
+            }
+            if disp > 0 {
+                self.spawn_fx("burst", px, py, Color32::from_rgb(125, 211, 252), if is_qkd { 8 } else { 18 });
+                self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                if let Some(qs) = &mut self.qkd_session {
+                    qs.record_drop();
+                }
+                return Some(format!(
+                    "FAILURE: Photon {pid} pulse broadened by Chromatic Dispersion (CD={disp})! Insert DCF after CD Fiber."
                 ));
             }
             if fid < min_fid {
@@ -1251,7 +1306,7 @@ impl BenchSim {
                 }
                 Some(format!("FAILURE: Photon {pid} collided with cryostat shielding."))
             }
-            Tile::Fiber | Tile::LitFiber | Tile::PmdFiber => {
+            Tile::Fiber | Tile::LitFiber | Tile::PmdFiber | Tile::CdFiber => {
                 let wl = self.photons[idx].wavelength;
                 if wl != 1550 {
                     self.photons[idx].alive = false;
@@ -1272,6 +1327,9 @@ impl BenchSim {
                     self.photons[idx].pol = self.photons[idx].pol.flipped();
                     self.photons[idx].pmd_flips += 1;
                     self.spawn_fx("spark", px, py, ACCENT_PURPLE, if is_qkd { 3 } else { 6 });
+                } else if tile == Tile::CdFiber {
+                    self.photons[idx].dispersion += 1;
+                    self.spawn_fx("spark", px, py, Color32::from_rgb(125, 211, 252), if is_qkd { 3 } else { 6 });
                 }
                 if self.photons[idx].fidelity <= 0 {
                     self.photons[idx].alive = false;
@@ -1286,6 +1344,12 @@ impl BenchSim {
                     return Some(format!(
                         "PMD Fiber: Photon {pid} polarization drifted to '{}'.",
                         self.photons[idx].pol.as_str()
+                    ));
+                }
+                if tile == Tile::CdFiber && !is_qkd {
+                    return Some(format!(
+                        "CD Fiber: Photon {pid} pulse broadened (Chromatic Dispersion = {}).",
+                        self.photons[idx].dispersion
                     ));
                 }
                 None
@@ -1406,11 +1470,39 @@ impl BenchSim {
                     "Adaptive Optics: Wavefront locked for Photon {pid} (ATMOS loss reduced to -5%)."
                 ))
             }
+            Tile::Placeable(Placeable::Dcf) => {
+                if self.photons[idx].dispersion > 0 {
+                    self.photons[idx].dispersion = 0;
+                    self.spawn_fx("ring", px, py, Color32::from_rgb(125, 211, 252), 12);
+                    self.emit_sfx(SfxEvent::Vbg, is_qkd, pair_id);
+                    if !is_qkd {
+                        return Some(format!(
+                            "DCF: Recompressed Photon {pid} wavepacket (Chromatic Dispersion cleared to 0)."
+                        ));
+                    }
+                }
+                None
+            }
+            Tile::Placeable(Placeable::Wdm) => {
+                let wl = self.photons[idx].wavelength;
+                if wl != 1550 {
+                    self.photons[idx].dir = self.photons[idx].dir.reflect_back();
+                    self.spawn_fx("spark", px, py, Color32::from_rgb(244, 114, 182), if is_qkd { 3 } else { 8 });
+                    self.emit_sfx(SfxEvent::Mirror, is_qkd, pair_id);
+                    if !is_qkd {
+                        return Some(format!("WDM Dichroic: Reflected visible {wl}nm Photon {pid} 90° (\\)."));
+                    }
+                } else {
+                    self.spawn_fx("spark", px, py, ACCENT_CYAN, if is_qkd { 2 } else { 5 });
+                }
+                None
+            }
             Tile::Distill => {
                 self.photons[idx].alive = false;
                 let wl = self.photons[idx].wavelength;
                 let noise = self.photons[idx].noise;
                 let fid = self.photons[idx].fidelity;
+                let disp = self.photons[idx].dispersion;
                 if wl != 1550 {
                     self.spawn_fx("burst", px, py, ACCENT_RED, 16);
                     self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
@@ -1423,6 +1515,13 @@ impl BenchSim {
                     self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
                     return Some(format!(
                         "FAILURE: DISTILL latched by Photon {pid} Raman noise ({noise})!"
+                    ));
+                }
+                if disp > 0 {
+                    self.spawn_fx("burst", px, py, Color32::from_rgb(125, 211, 252), 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: DISTILL rejected dispersed Photon {pid} (CD={disp})! Add DCF before DISTILL."
                     ));
                 }
                 if fid < 60 {
@@ -1442,6 +1541,7 @@ impl BenchSim {
                 let wl = self.photons[idx].wavelength;
                 let noise = self.photons[idx].noise;
                 let fid = self.photons[idx].fidelity;
+                let disp = self.photons[idx].dispersion;
                 let pol = self.photons[idx].pol;
                 if wl != 1550 {
                     self.spawn_fx("burst", px, py, ACCENT_RED, 16);
@@ -1455,6 +1555,13 @@ impl BenchSim {
                     self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
                     return Some(format!(
                         "FAILURE: REPEATER BSM latched by Photon {pid} Raman noise ({noise})!"
+                    ));
+                }
+                if disp > 0 {
+                    self.spawn_fx("burst", px, py, Color32::from_rgb(125, 211, 252), 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: REPEATER rejected dispersed Photon {pid} (CD={disp})! Add DCF."
                     ));
                 }
                 if fid < 60 {
@@ -1472,6 +1579,45 @@ impl BenchSim {
                     "Repeater: Hop-1 Photon {pid} buffered ({fid}%, pol '{}').",
                     pol.as_str()
                 ))
+            }
+            Tile::TeleportBsm => {
+                self.photons[idx].alive = false;
+                let wl = self.photons[idx].wavelength;
+                let noise = self.photons[idx].noise;
+                let fid = self.photons[idx].fidelity;
+                let disp = self.photons[idx].dispersion;
+                if wl != 1550 {
+                    self.spawn_fx("burst", px, py, ACCENT_RED, 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: TELE-BSM requires 1550nm, Photon {pid} arrived at {wl}nm!"
+                    ));
+                }
+                if noise > 10 {
+                    self.spawn_fx("burst", px, py, ACCENT_AMBER, 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: TELE-BSM latched by Photon {pid} Raman noise ({noise})!"
+                    ));
+                }
+                if disp > 0 {
+                    self.spawn_fx("burst", px, py, Color32::from_rgb(125, 211, 252), 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: TELE-BSM rejected dispersed Photon {pid} (CD={disp})! Add DCF."
+                    ));
+                }
+                if fid < 60 {
+                    self.spawn_fx("burst", px, py, ACCENT_RED, 16);
+                    self.emit_sfx(SfxEvent::Fail, is_qkd, pair_id);
+                    return Some(format!(
+                        "FAILURE: Photon {pid} fidelity ({fid}%) too low for Bell-state projection."
+                    ));
+                }
+                self.photons[idx].tele_tick = Some(self.tick);
+                self.photons[idx].tele_pos = Some((cx, cy));
+                self.spawn_fx("ring", px, py, ACCENT_AMBER, 10);
+                Some(format!("TELE-BSM: Photon {pid} projected ({fid}%)."))
             }
             Tile::Placeable(Placeable::MirrorSlash) => {
                 self.photons[idx].dir = self.photons[idx].dir.reflect_slash();
@@ -1593,6 +1739,68 @@ impl BenchSim {
         }
     }
 
+    fn process_teleport(&mut self) {
+        if self.teleport_checked {
+            return;
+        }
+        let buffered: Vec<(usize, u32, (i32, i32))> = self
+            .photons
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| Some((i, p.tele_tick?, p.tele_pos?)))
+            .collect();
+        if buffered.len() >= 2 {
+            self.teleport_checked = true;
+            let (_, t1, (bx, by)) = buffered[0];
+            let (_, t2, _) = buffered[1];
+            let delta_frames = t1.abs_diff(t2);
+            let delta_ps = delta_frames * 5;
+            self.hom_delta_ps = Some(delta_ps as i32);
+            self.hom_signed_ps = Some((t1 as i32 - t2 as i32) * 5);
+            let bcx = bx as f32 * TILE_SIZE + 40.0;
+            let bcy = by as f32 * TILE_SIZE + 40.0;
+            if delta_frames > 3 {
+                self.spawn_fx("burst", bcx, bcy, ACCENT_AMBER, 18);
+                self.pending_sfx.push(SfxEvent::Fail);
+                self.status_msg = format!(
+                    "FAILURE: Teleportation BSM timing mismatch ({delta_ps}ps > 15ps). Sync |Psi> & EPR-Alice!"
+                );
+                self.status_color = ACCENT_RED;
+            } else {
+                self.teleport_heralded = true;
+                let psi_pol = self
+                    .current_level()
+                    .emitters
+                    .first()
+                    .map(|e| e.pol)
+                    .unwrap_or(Pol::Cross);
+                // Project Bob's entangled EPR partner into the teleported |Psi> state (accounting for any PMD/HWP already traversed!)
+                let mut bob_fx: Option<(f32, f32)> = None;
+                for (i, ph) in self.photons.iter_mut().enumerate() {
+                    if i != buffered[0].0 && i != buffered[1].0 {
+                        ph.pol = if ph.pmd_flips % 2 == 1 {
+                            psi_pol.flipped()
+                        } else {
+                            psi_pol
+                        };
+                        bob_fx = Some((ph.px, ph.py));
+                    }
+                }
+                self.spawn_fx("ring", bcx, bcy, ACCENT_AMBER, 16);
+                self.spawn_fx("ring", bcx, bcy, ACCENT_PURPLE, 12);
+                if let Some((px, py)) = bob_fx {
+                    self.spawn_fx("ring", px, py, ACCENT_PURPLE, 16);
+                }
+                self.pending_sfx.push(SfxEvent::BsmOk);
+                self.status_msg = format!(
+                    "TELEPORT HERALDED (dt:{delta_ps}ps): |Psi> ('{}') projected onto Bob's distant EPR photon!",
+                    psi_pol.as_str()
+                );
+                self.status_color = ACCENT_PURPLE;
+            }
+        }
+    }
+
     fn evaluate_simulation(&mut self) {
         let lvl = self.current_level().clone();
         if lvl.mode.is_qkd() {
@@ -1656,6 +1864,52 @@ impl BenchSim {
         let (tx, ty) = lvl.target;
         let tcx = tx as f32 * TILE_SIZE + 40.0;
         let tcy = ty as f32 * TILE_SIZE + 40.0;
+
+        if lvl.mode == TargetMode::Teleport {
+            let expected_pol = lvl.emitters.first().map(|e| e.pol).unwrap_or(Pol::Cross);
+            let arrived_bob = self.photons.iter().rev().find(|p| p.arrived);
+            let Some(bob) = arrived_bob else {
+                self.sim_state = SimState::Fault;
+                return;
+            };
+            let bob_pol = bob.pol;
+            let bob_fid = bob.fidelity;
+            if !self.teleport_heralded {
+                self.status_msg = "FAILURE: Bob received EPR photon, but Alice's TELE-BSM never heralded |Psi>!".to_string();
+                self.status_color = ACCENT_RED;
+                self.sim_state = SimState::Fault;
+                self.pending_sfx.push(SfxEvent::Fail);
+                self.spawn_fx("burst", tcx, tcy, ACCENT_AMBER, 18);
+                return;
+            }
+            if bob_pol != expected_pol {
+                self.pol_mismatch = true;
+                self.status_msg = format!(
+                    "FAILURE: Teleported state corrupted ('{}' != '{}') by PMD! Add HWP Pauli correction.",
+                    bob_pol.as_str(),
+                    expected_pol.as_str()
+                );
+                self.status_color = ACCENT_RED;
+                self.sim_state = SimState::Fault;
+                self.pending_sfx.push(SfxEvent::Fail);
+                self.spawn_fx("burst", tcx, tcy, ACCENT_PURPLE, 18);
+                return;
+            }
+            self.status_msg = format!(
+                "SUCCESS! Quantum Teleportation complete — |Psi> ('{}') reconstructed at Bob (Fid: {bob_fid}%)!",
+                expected_pol.as_str()
+            );
+            self.status_color = ACCENT_GREEN;
+            self.sim_state = SimState::Locked;
+            self.level_complete = true;
+            if !self.sandbox_mode {
+                self.completed_levels.insert(self.level_idx);
+            }
+            self.pending_sfx.push(SfxEvent::BsmOk);
+            self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 28);
+            self.spawn_fx("ring", tcx, tcy, ACCENT_PURPLE, 18);
+            return;
+        }
 
         if lvl.mode == TargetMode::Qpu {
             let arrived_fid = self.photons.iter().rev().find(|p| p.arrived).map(|p| p.fidelity);
@@ -1823,7 +2077,7 @@ mod tests {
     }
 
     #[test]
-    fn all_16_levels_solvable_and_physics_enforced() {
+    fn all_20_levels_solvable_and_physics_enforced() {
         use Placeable::*;
 
         // L1: fail without QFC, solve with QFC + VBG
@@ -2012,6 +2266,87 @@ mod tests {
             l16_ok.qkd_session.as_ref().unwrap().decrypted_text,
             l16_ok.qkd_plaintext
         );
+
+        // L17: Chromatic Dispersion (CD Fiber + DCF)
+        // DCF placed BEFORE CD Fiber -> Fault (dispersion not cleared downstream)
+        let l17_early_dcf = run_level(16, &[(Qfc, 1, 2), (Dcf, 2, 2), (Vbg, 7, 2)], None);
+        assert_eq!(l17_early_dcf.sim_state, SimState::Fault);
+        // VBG placed BEFORE Lit Fiber -> Fault (noise = 15 > 10)
+        let l17_early_vbg = run_level(16, &[(Qfc, 1, 2), (Vbg, 2, 2), (Dcf, 8, 2)], None);
+        assert_eq!(l17_early_vbg.sim_state, SimState::Fault);
+        // Full Level 17 Solution -> Locked!
+        let l17_ok = run_level(16, &[(Qfc, 1, 2), (Vbg, 7, 2), (Dcf, 8, 2)], None);
+        assert_eq!(l17_ok.sim_state, SimState::Locked);
+
+        // L18: WDM Wavelength Routing (1550nm passes straight; 637nm reflects \)
+        // Converting Arm B to 1550nm BEFORE WDM makes it shoot straight off the bench -> Fault
+        let l18_bad_wdm = run_level(17, &[(Qfc, 1, 2), (Qfc, 3, 1), (Wdm, 3, 2), (Vbg, 5, 2), (Vbg, 6, 2)], None);
+        assert_eq!(l18_bad_wdm.sim_state, SimState::Fault);
+        // Full Level 18 Solution -> Locked!
+        let l18_ok = run_level(17, &[(Qfc, 1, 2), (Delay, 3, 1), (Wdm, 3, 2), (Qfc, 4, 2), (Vbg, 5, 2), (Vbg, 6, 2)], None);
+        assert_eq!(l18_ok.sim_state, SimState::Locked);
+
+        // L19: Dispersive Metro Link (CD + Lit + Distill -> QPU >=90%)
+        // Missing DCF on Arm B -> Fault at DISTILL
+        let l19_no_dcf = run_level(
+            18,
+            &[
+                (Qfc, 1, 1), (Vbg, 2, 1), (Dcf, 6, 1), (Delay, 7, 1), (MirrorBack, 8, 1),
+                (Qfc, 1, 4), (Vbg, 6, 4), (MirrorSlash, 8, 4),
+            ],
+            None,
+        );
+        assert_eq!(l19_no_dcf.sim_state, SimState::Fault);
+        // Full Level 19 Solution -> Locked!
+        let l19_ok = run_level(
+            18,
+            &[
+                (Qfc, 1, 1), (Vbg, 2, 1), (Dcf, 6, 1), (Delay, 7, 1), (MirrorBack, 8, 1),
+                (Qfc, 1, 4), (Vbg, 6, 4), (Dcf, 7, 4), (MirrorSlash, 8, 4),
+            ],
+            None,
+        );
+        assert_eq!(l19_ok.sim_state, SimState::Locked);
+
+        // L20: Quantum Teleportation (|Psi> 'x' + EPR + TELE-BSM -> TELEPORT RX)
+        // Missing HWP Pauli correction on Bob's PMD arm -> Fault
+        let l20_no_hwp = run_level(
+            19,
+            &[
+                (Qfc, 1, 5), (Vbg, 2, 5), (MirrorSlash, 3, 5),
+                (Qfc, 5, 1), (Vbg, 4, 1), (MirrorSlash, 3, 1),
+                (Qfc, 7, 1), (Vbg, 8, 1), (MirrorBack, 9, 1), (MirrorSlash, 9, 4), (Dcf, 8, 4),
+            ],
+            None,
+        );
+        assert_eq!(l20_no_hwp.sim_state, SimState::Fault);
+        assert!(l20_no_hwp.teleport_heralded);
+        assert!(l20_no_hwp.pol_mismatch);
+
+        // Missing Alice's |Psi> arm (no TELE-BSM herald) -> Fault
+        let l20_no_herald = run_level(
+            19,
+            &[
+                (Qfc, 5, 1), (Vbg, 4, 1), (MirrorSlash, 3, 1),
+                (Qfc, 7, 1), (Vbg, 8, 1), (MirrorBack, 9, 1), (MirrorSlash, 9, 4), (Dcf, 8, 4), (Hwp, 7, 4),
+            ],
+            None,
+        );
+        assert_eq!(l20_no_herald.sim_state, SimState::Fault);
+        assert!(!l20_no_herald.teleport_heralded);
+
+        // Full Level 20 Solution -> Quantum Teleportation Locked!
+        let l20_ok = run_level(
+            19,
+            &[
+                (Qfc, 1, 5), (Vbg, 2, 5), (MirrorSlash, 3, 5),
+                (Qfc, 5, 1), (Vbg, 4, 1), (MirrorSlash, 3, 1),
+                (Qfc, 7, 1), (Vbg, 8, 1), (MirrorBack, 9, 1), (MirrorSlash, 9, 4), (Dcf, 8, 4), (Hwp, 7, 4),
+            ],
+            None,
+        );
+        assert_eq!(l20_ok.sim_state, SimState::Locked);
+        assert!(l20_ok.teleport_heralded);
     }
 
     #[test]

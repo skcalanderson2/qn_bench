@@ -117,9 +117,9 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
 
     ui.add_space(3.0);
 
-    // Row 2: Level pills 1..16 + SANDBOX (left) and UNDO / REDO / ALIGN / HINT (right)
-    let narrow = ui.available_width() < 590.0;
-    let pill_w = if narrow { 14.5 } else { 18.0 };
+    // Row 2: Level pills 1..20 + SANDBOX (left) and UNDO / REDO / ALIGN / HINT (right)
+    let narrow = ui.available_width() < 640.0;
+    let pill_w = if narrow { 13.0 } else { 16.5 };
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         for i in 0..total_levels {
@@ -128,7 +128,7 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
             let bg = if is_cur { Color32::from_rgb(36, 56, 78) } else { Color32::from_rgb(18, 24, 34) };
             let bd = if is_cur { ACCENT_CYAN } else if is_done { ACCENT_GREEN } else { GRID_LINE };
             let fg = if is_cur { TEXT_WHITE } else if is_done { ACCENT_GREEN } else { TEXT_MUTED };
-            let btn = egui::Button::new(egui::RichText::new(format!("{}", i + 1)).strong().size(if narrow { 9.0 } else { 9.5 }).color(fg))
+            let btn = egui::Button::new(egui::RichText::new(format!("{}", i + 1)).strong().size(if narrow { 8.5 } else { 9.5 }).color(fg))
                 .fill(bg)
                 .stroke(Stroke::new(1.0_f32, bd))
                 .corner_radius(CornerRadius::same(4))
@@ -143,28 +143,28 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
         let sb_bg = if sb_on { Color32::from_rgb(56, 36, 92) } else { Color32::from_rgb(24, 22, 38) };
         let sb_bd = if sb_on { ACCENT_PURPLE } else { Color32::from_rgb(84, 68, 124) };
         let sb_fg = if sb_on { TEXT_WHITE } else { ACCENT_PURPLE };
-        let sb_btn = egui::Button::new(egui::RichText::new("SANDBOX").strong().size(9.5).color(sb_fg))
+        let sb_btn = egui::Button::new(egui::RichText::new("SANDBOX").strong().size(if narrow { 8.5 } else { 9.5 }).color(sb_fg))
             .fill(sb_bg)
             .stroke(Stroke::new(1.0_f32, sb_bd))
             .corner_radius(CornerRadius::same(4))
-            .min_size(Vec2::new(if narrow { 50.0 } else { 58.0 }, 20.0));
+            .min_size(Vec2::new(if narrow { 46.0 } else { 54.0 }, 20.0));
         if ui.add(sb_btn).on_hover_text("Toggle Free-Build Sandbox Mode [S]").clicked() {
             action.toggle_sandbox = true;
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = 3.0;
 
             if !sim.sandbox_mode {
                 let is_fault = sim.sim_state == SimState::Fault;
                 let h_bg = if is_fault { Color32::from_rgb(50, 38, 16) } else { Color32::from_rgb(20, 28, 40) };
                 let h_bd = if is_fault { ACCENT_AMBER } else { GRID_LINE };
                 let h_fg = if is_fault { ACCENT_AMBER } else { TEXT_MUTED };
-                let h_btn = egui::Button::new(egui::RichText::new("HINT").strong().size(9.5).color(h_fg))
+                let h_btn = egui::Button::new(egui::RichText::new("HINT").strong().size(9.0).color(h_fg))
                     .fill(h_bg)
                     .stroke(Stroke::new(1.0_f32, h_bd))
                     .corner_radius(CornerRadius::same(4))
-                    .min_size(Vec2::new(38.0, 20.0));
+                    .min_size(Vec2::new(if narrow { 30.0 } else { 36.0 }, 20.0));
                 if ui.add(h_btn).on_hover_text("Reveal Progressive Level Hint [I]").clicked() {
                     action.open_hint = true;
                 }
@@ -174,11 +174,11 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
             let al_bg = if al_on { Color32::from_rgb(18, 42, 54) } else { Color32::from_rgb(20, 26, 36) };
             let al_bd = if al_on { ACCENT_CYAN } else { GRID_LINE };
             let al_fg = if al_on { ACCENT_CYAN } else { TEXT_MUTED };
-            let al_btn = egui::Button::new(egui::RichText::new("ALIGN").strong().size(9.5).color(al_fg))
+            let al_btn = egui::Button::new(egui::RichText::new("ALIGN").strong().size(9.0).color(al_fg))
                 .fill(al_bg)
                 .stroke(Stroke::new(1.0_f32, al_bd))
                 .corner_radius(CornerRadius::same(4))
-                .min_size(Vec2::new(42.0, 20.0));
+                .min_size(Vec2::new(if narrow { 34.0 } else { 40.0 }, 20.0));
             if ui.add(al_btn).on_hover_text("Toggle Alignment Laser & Path-Length Timing [L]").clicked() {
                 sim.align_laser = !sim.align_laser;
                 sim.pending_sfx.push(crate::sim::SfxEvent::Select);
@@ -188,13 +188,13 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
             let r_btn = egui::Button::new(
                 egui::RichText::new("REDO")
                     .strong()
-                    .size(9.5)
+                    .size(9.0)
                     .color(if can_redo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
             )
             .fill(Color32::from_rgb(20, 26, 36))
             .stroke(Stroke::new(1.0_f32, if can_redo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
             .corner_radius(CornerRadius::same(4))
-            .min_size(Vec2::new(36.0, 20.0));
+            .min_size(Vec2::new(if narrow { 30.0 } else { 34.0 }, 20.0));
             if ui.add_enabled(can_redo, r_btn).on_hover_text("Redo [Ctrl/Cmd+Shift+Z]").clicked() {
                 sim.redo();
             }
@@ -203,13 +203,13 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
             let u_btn = egui::Button::new(
                 egui::RichText::new("UNDO")
                     .strong()
-                    .size(9.5)
+                    .size(9.0)
                     .color(if can_undo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
             )
             .fill(Color32::from_rgb(20, 26, 36))
             .stroke(Stroke::new(1.0_f32, if can_undo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
             .corner_radius(CornerRadius::same(4))
-            .min_size(Vec2::new(36.0, 20.0));
+            .min_size(Vec2::new(if narrow { 30.0 } else { 34.0 }, 20.0));
             if ui.add_enabled(can_undo, u_btn).on_hover_text("Undo [Ctrl/Cmd+Z]").clicked() {
                 sim.undo();
             }
@@ -510,12 +510,14 @@ fn draw_standard_panes(ui: &mut Ui, sim: &BenchSim, mode: TargetMode, pane_w: f3
         p.rect_filled(Rect::from_min_size(Pos2::new(led_x, sy), Vec2::new(14.0, seg_h)), CornerRadius::same(2), col);
     }
 
-    // Pane 3: HOM Coincidence Dip (BSM) or Spectrum / Lock (SNSPD / QPU)
+    // Pane 3: HOM Coincidence Dip (BSM / Teleport) or Spectrum / Lock (SNSPD / QPU)
     let (p3, _) = ui.allocate_exact_size(Vec2::new(pane_w, scope_h), Sense::hover());
     let p = ui.painter_at(p3);
-    if mode == TargetMode::Bsm {
+    if mode == TargetMode::Bsm || mode == TargetMode::Teleport {
         let (hom_str, hom_col) = if sim.pol_mismatch {
             ("POL MISMATCH".to_string(), ACCENT_RED)
+        } else if mode == TargetMode::Teleport && sim.teleport_heralded {
+            ("HERALDED |Psi>".to_string(), ACCENT_GREEN)
         } else if let (Some(signed), Some(delta)) = (sim.hom_signed_ps, sim.hom_delta_ps) {
             let sign = if signed > 0 { "+" } else { "" };
             (format!("dt:{sign}{signed}ps"), if delta <= 15 { ACCENT_GREEN } else { ACCENT_RED })
@@ -524,7 +526,8 @@ fn draw_standard_panes(ui: &mut Ui, sim: &BenchSim, mode: TargetMode, pane_w: f3
         } else {
             ("WINDOW <=15ps".to_string(), TEXT_MUTED)
         };
-        draw_scope_frame(&p, p3, "HOM INTERFERENCE", &hom_str, hom_col);
+        let p3_title = if mode == TargetMode::Teleport { "TELEPORT BSM" } else { "HOM INTERFERENCE" };
+        draw_scope_frame(&p, p3, p3_title, &hom_str, hom_col);
 
         let hx1 = p3.left() + 10.0;
         let hx2 = p3.right() - 10.0;

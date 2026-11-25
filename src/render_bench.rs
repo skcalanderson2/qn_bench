@@ -72,6 +72,26 @@ pub fn draw_tile_schematic(p: &Painter, rect: Rect, tile: Tile, frame: u64, alph
             p.add(egui::Shape::line(pts, Stroke::new(3.0 * s, col(ACCENT_PURPLE))));
             p.text(Pos2::new(cx, rect.bottom() - 11.0 * s), Align2::CENTER_CENTER, "PMD FIBER", font_tile, col(ACCENT_PURPLE));
         }
+        Tile::CdFiber => {
+            let cd_col = Color32::from_rgb(125, 211, 252);
+            let band = Rect::from_min_max(Pos2::new(rect.left(), cy - 12.0 * s), Pos2::new(rect.right(), cy + 12.0 * s));
+            p.rect_filled(band, 0.0, col(Color32::from_rgb(18, 34, 54)));
+            p.line_segment([band.left_top(), band.right_top()], Stroke::new(2.0 * s, col(Color32::from_rgb(65, 130, 180))));
+            p.line_segment([band.left_bottom(), band.right_bottom()], Stroke::new(2.0 * s, col(Color32::from_rgb(65, 130, 180))));
+            // Chirped / broadening wavepacket envelope
+            let pts_hi: Vec<Pos2> = (0..=80).step_by(4).map(|x| {
+                let env = 2.0 + (x as f32 / 80.0) * 6.5;
+                Pos2::new(rect.left() + x as f32 * s, cy - env * s)
+            }).collect();
+            let pts_lo: Vec<Pos2> = (0..=80).step_by(4).map(|x| {
+                let env = 2.0 + (x as f32 / 80.0) * 6.5;
+                Pos2::new(rect.left() + x as f32 * s, cy + env * s)
+            }).collect();
+            p.add(egui::Shape::line(pts_hi, Stroke::new(2.0 * s, col(cd_col))));
+            p.add(egui::Shape::line(pts_lo, Stroke::new(2.0 * s, col(cd_col))));
+            p.line_segment([Pos2::new(rect.left(), cy), Pos2::new(rect.right(), cy)], Stroke::new(1.5 * s, col(ACCENT_AMBER)));
+            p.text(Pos2::new(cx, rect.bottom() - 11.0 * s), Align2::CENTER_CENTER, "CD FIBER", font_tile, col(cd_col));
+        }
         Tile::Atmos => {
             p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(Color32::from_rgb(16, 36, 44)));
             p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(1.5 * s, col(Color32::from_rgb(55, 130, 145))), StrokeKind::Inside);
@@ -145,6 +165,17 @@ pub fn draw_tile_schematic(p: &Painter, rect: Rect, tile: Tile, frame: u64, alph
             ));
             p.text(Pos2::new(cx, rect.top() + 62.0 * s), Align2::CENTER_CENTER, "REPEATER", font_tile, col(ACCENT_CYAN));
         }
+        Tile::TeleportBsm => {
+            p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(Color32::from_rgb(44, 30, 18)));
+            p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(ACCENT_AMBER)), StrokeKind::Inside);
+            let cube = Rect::from_min_size(Pos2::new(cx - 15.0 * s, rect.top() + 16.0 * s), Vec2::new(30.0 * s, 30.0 * s));
+            p.rect_filled(cube, CornerRadius::same((3.0 * s) as u8), col(Color32::from_rgb(76, 52, 26)));
+            p.rect_stroke(cube, CornerRadius::same((3.0 * s) as u8), Stroke::new(1.8 * s, col(ACCENT_AMBER)), StrokeKind::Inside);
+            p.line_segment([cube.left_bottom(), cube.right_top()], Stroke::new(2.0 * s, col(Color32::from_rgb(255, 240, 200))));
+            let pulse = (3.0 + 1.5 * (frame as f32 * 0.14).sin()) * s;
+            p.circle_filled(cube.center(), pulse, col(ACCENT_PURPLE));
+            p.text(Pos2::new(cx, rect.top() + 62.0 * s), Align2::CENTER_CENTER, "TELE-BSM", font_tile, col(ACCENT_AMBER));
+        }
         Tile::Placeable(Placeable::Qfc) => {
             p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(Color32::from_rgb(28, 24, 48)));
             p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(ACCENT_PURPLE)), StrokeKind::Inside);
@@ -210,6 +241,30 @@ pub fn draw_tile_schematic(p: &Painter, rect: Rect, tile: Tile, frame: u64, alph
             }
             p.text(Pos2::new(cx, rect.top() + 62.0 * s), Align2::CENTER_CENTER, "ADAPT OPT", font_tile, col(ACCENT_TEAL));
         }
+        Tile::Placeable(Placeable::Dcf) => {
+            let dcf_col = Color32::from_rgb(125, 211, 252);
+            p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(Color32::from_rgb(16, 32, 48)));
+            p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(dcf_col)), StrokeKind::Inside);
+            // Chirped grating bars (narrowing spacing) showing pulse compression
+            for &dx in &[-19.0f32, -10.0, -3.0, 2.0, 6.0, 10.0, 14.0, 18.0] {
+                p.line_segment(
+                    [Pos2::new(cx + dx * s, rect.top() + 18.0 * s), Pos2::new(cx + dx * s, rect.top() + 48.0 * s)],
+                    Stroke::new(2.0 * s, col(dcf_col)),
+                );
+            }
+            p.line_segment([Pos2::new(cx - 22.0 * s, rect.top() + 33.0 * s), Pos2::new(cx + 22.0 * s, rect.top() + 33.0 * s)], Stroke::new(1.5 * s, col(ACCENT_GREEN)));
+            p.text(Pos2::new(cx, rect.top() + 62.0 * s), Align2::CENTER_CENTER, "DCF COMP", font_tile, col(dcf_col));
+        }
+        Tile::Placeable(Placeable::Wdm) => {
+            let wdm_col = Color32::from_rgb(244, 114, 182);
+            p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(Color32::from_rgb(38, 20, 42)));
+            p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(wdm_col)), StrokeKind::Inside);
+            // Dichroic (\) coated glass plate: transmits 1550nm cyan, reflects visible magenta/orange
+            p.line_segment([Pos2::new(rect.left() + 16.0 * s, rect.top() + 16.0 * s), Pos2::new(rect.left() + 64.0 * s, rect.top() + 64.0 * s)], Stroke::new(6.0 * s, col(Color32::from_rgb(130, 52, 104))));
+            p.line_segment([Pos2::new(rect.left() + 16.0 * s, rect.top() + 16.0 * s), Pos2::new(rect.left() + 64.0 * s, rect.top() + 64.0 * s)], Stroke::new(2.2 * s, col(wdm_col)));
+            p.line_segment([Pos2::new(rect.left() + 12.0 * s, cy - 2.0 * s), Pos2::new(rect.right() - 12.0 * s, cy - 2.0 * s)], Stroke::new(1.8 * s, col(ACCENT_CYAN)));
+            p.text(Pos2::new(cx, rect.top() + 62.0 * s), Align2::CENTER_CENTER, "WDM (\\)", font_tile, col(wdm_col));
+        }
         Tile::Placeable(Placeable::MirrorSlash) => {
             p.rect_filled(inner, CornerRadius::same((6.0 * s) as u8), col(Color32::from_rgb(24, 30, 42)));
             p.rect_stroke(inner, CornerRadius::same((6.0 * s) as u8), Stroke::new(1.0 * s, col(Color32::from_rgb(55, 68, 90))), StrokeKind::Inside);
@@ -267,18 +322,19 @@ fn draw_epr_source(p: &Painter, rect: Rect, vertical: bool, frame: u64, alpha: u
     p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "EPR PAIR", FontId::proportional((10.0 * s).max(8.0)), col(ACCENT_PURPLE));
 }
 
-fn draw_emitter(p: &Painter, rect: Rect, label: char, dir: Dir, wl: u32, is_qkd_tx: bool, frame: u64, alpha: u8) {
+fn draw_emitter(p: &Painter, rect: Rect, label: char, dir: Dir, wl: u32, pol: Pol, is_qkd_tx: bool, frame: u64, alpha: u8) {
     let s = rect.width() / TILE_SIZE;
     let inner = rect.shrink(6.0 * s);
     let cx = inner.center().x;
     let cy = inner.center().y;
     let col = |c: Color32| with_alpha(c, ((c.a() as u32 * alpha as u32) / 255) as u8);
     let is_nv = wl == 637;
-    let accent = if is_nv { ACCENT_ORANGE } else { ACCENT_RED };
-    let bg = if is_nv { Color32::from_rgb(48, 28, 16) } else { Color32::from_rgb(48, 20, 28) };
+    let is_psi = pol == Pol::Cross;
+    let accent = if is_psi { ACCENT_PURPLE } else if is_nv { ACCENT_ORANGE } else { ACCENT_RED };
+    let bg = if is_psi { Color32::from_rgb(38, 22, 56) } else if is_nv { Color32::from_rgb(48, 28, 16) } else { Color32::from_rgb(48, 20, 28) };
     p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(bg));
     p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(accent)), StrokeKind::Inside);
-    let elec_col = if is_nv { Color32::from_rgb(175, 110, 65) } else { Color32::from_rgb(160, 80, 95) };
+    let elec_col = if is_psi { Color32::from_rgb(140, 100, 195) } else if is_nv { Color32::from_rgb(175, 110, 65) } else { Color32::from_rgb(160, 80, 95) };
     for (dx, dy) in [(-14.0f32, -14.0f32), (14.0, -14.0), (-14.0, 10.0), (14.0, 10.0)] {
         p.circle_filled(Pos2::new(cx + dx * s, cy + dy * s), 4.0 * s, col(elec_col));
     }
@@ -292,9 +348,11 @@ fn draw_emitter(p: &Painter, rect: Rect, label: char, dir: Dir, wl: u32, is_qkd_
         draw_radial_glow(p, Pos2::new(cx, cy - 2.0 * s), 25.0 * s, accent, 140);
     }
     let pulse = (4.0 + 1.5 * (frame as f32 * 0.12).sin()) * s;
-    let core = if is_nv { Color32::from_rgb(255, 225, 195) } else { Color32::from_rgb(255, 210, 220) };
+    let core = if is_psi { Color32::from_rgb(235, 215, 255) } else if is_nv { Color32::from_rgb(255, 225, 195) } else { Color32::from_rgb(255, 210, 220) };
     p.circle_filled(Pos2::new(cx, cy - 2.0 * s), pulse, col(core));
-    let tag = if is_qkd_tx {
+    let tag = if is_psi {
+        "|Psi> 'x'".to_string()
+    } else if is_qkd_tx {
         "QKD TX +".to_string()
     } else if is_nv {
         format!("NV {label} 637")
@@ -313,14 +371,14 @@ fn draw_target(p: &Painter, rect: Rect, mode: TargetMode, label_override: Option
     let is_qkd = mode.is_qkd();
     let border = if complete {
         ACCENT_GREEN
-    } else if mode == TargetMode::Qpu {
+    } else if mode == TargetMode::Qpu || mode == TargetMode::Teleport {
         ACCENT_PURPLE
     } else if is_qkd {
         ACCENT_TEAL
     } else {
         ACCENT_CYAN
     };
-    let bg = if mode == TargetMode::Qpu {
+    let bg = if mode == TargetMode::Qpu || mode == TargetMode::Teleport {
         Color32::from_rgb(24, 24, 48)
     } else if is_qkd {
         Color32::from_rgb(14, 40, 38)
@@ -341,6 +399,14 @@ fn draw_target(p: &Painter, rect: Rect, mode: TargetMode, label_override: Option
         p.line_segment([Pos2::new(c.x - 6.0 * s, c.y - 6.0 * s), Pos2::new(c.x + 6.0 * s, c.y + 6.0 * s)], Stroke::new(1.2 * s, col(ACCENT_PURPLE)));
         p.line_segment([Pos2::new(c.x - 6.0 * s, c.y + 6.0 * s), Pos2::new(c.x + 6.0 * s, c.y - 6.0 * s)], Stroke::new(1.2 * s, col(ACCENT_PURPLE)));
         p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, label_override.unwrap_or("BOB RX"), font_tile, col(border));
+    } else if mode == TargetMode::Teleport {
+        let rx = Rect::from_min_size(Pos2::new(cx - 15.0 * s, cy - 22.0 * s), Vec2::new(30.0 * s, 30.0 * s));
+        p.rect_filled(rx, CornerRadius::same((5.0 * s) as u8), col(Color32::from_rgb(50, 32, 86)));
+        p.rect_stroke(rx, CornerRadius::same((5.0 * s) as u8), Stroke::new(2.0 * s, col(border)), StrokeKind::Inside);
+        let c = rx.center();
+        p.line_segment([Pos2::new(c.x - 8.0 * s, c.y - 8.0 * s), Pos2::new(c.x + 8.0 * s, c.y + 8.0 * s)], Stroke::new(2.4 * s, col(Color32::from_rgb(225, 200, 255))));
+        p.line_segment([Pos2::new(c.x - 8.0 * s, c.y + 8.0 * s), Pos2::new(c.x + 8.0 * s, c.y - 8.0 * s)], Stroke::new(2.4 * s, col(Color32::from_rgb(225, 200, 255))));
+        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "TELEPORT RX", font_tile, col(border));
     } else if mode == TargetMode::Bsm {
         let cube = Rect::from_min_size(Pos2::new(cx - 16.0 * s, cy - 22.0 * s), Vec2::new(32.0 * s, 32.0 * s));
         p.rect_filled(cube, 0.0, col(Color32::from_rgb(35, 85, 115)));
@@ -412,6 +478,7 @@ fn doc_key_at(sim: &BenchSim, pos: (i32, i32)) -> Option<&'static str> {
             TargetMode::Bsm => "BSM",
             TargetMode::Qpu => "QPU",
             TargetMode::QkdBb84 | TargetMode::QkdE91 => "QKD_RX",
+            TargetMode::Teleport => "TELEPORT_RX",
         });
     }
     sim.grid.get(&pos).map(|t| match t {
@@ -420,9 +487,11 @@ fn doc_key_at(sim: &BenchSim, pos: (i32, i32)) -> Option<&'static str> {
         Tile::Fiber => "FIBER",
         Tile::LitFiber => "LIT_FIBER",
         Tile::PmdFiber => "PMD_FIBER",
+        Tile::CdFiber => "CD_FIBER",
         Tile::Atmos => "ATMOS",
         Tile::Distill => "DISTILL",
         Tile::Repeater => "REPEATER",
+        Tile::TeleportBsm => "TELEPORT_BSM",
         Tile::Eve => "EVE",
     })
 }
@@ -566,8 +635,8 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
         if sim.sandbox_mode {
             match sim.sandbox_tool {
                 SandboxTool::Tile(t) => draw_tile_schematic(&p, tr, t, sim.frame, 115),
-                SandboxTool::EmitterIon => draw_emitter(&p, tr, '+', sim.sandbox_dir, 780, false, sim.frame, 120),
-                SandboxTool::EmitterNv => draw_emitter(&p, tr, '+', sim.sandbox_dir, 637, false, sim.frame, 120),
+                SandboxTool::EmitterIon => draw_emitter(&p, tr, '+', sim.sandbox_dir, 780, Pol::Plus, false, sim.frame, 120),
+                SandboxTool::EmitterNv => draw_emitter(&p, tr, '+', sim.sandbox_dir, 637, Pol::Plus, false, sim.frame, 120),
                 SandboxTool::EprSource => draw_epr_source(&p, tr, matches!(sim.sandbox_dir, Dir::Up | Dir::Down), sim.frame, 120),
                 SandboxTool::DetectorSnspd => draw_target(&p, tr, TargetMode::Single, None, false, 120),
                 SandboxTool::DetectorBsm => draw_target(&p, tr, TargetMode::Bsm, None, false, 120),
@@ -593,12 +662,23 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
     // 4. Emitters & Target(s)
     let lvl = sim.current_level();
     if let Some((sx, sy)) = lvl.epr_source {
-        let vert = lvl.emitters.first().map(|e| matches!(e.dir, Dir::Up | Dir::Down)).unwrap_or(false);
+        let vert = lvl
+            .emitters
+            .iter()
+            .find(|e| (e.gx, e.gy) == (sx, sy))
+            .map(|e| matches!(e.dir, Dir::Up | Dir::Down))
+            .unwrap_or(false);
         draw_epr_source(&p, tile_rect(sx, sy), vert, sim.frame, 255);
+        for (i, e) in lvl.emitters.iter().enumerate() {
+            if (e.gx, e.gy) != (sx, sy) {
+                let lbl = (b'A' + i as u8) as char;
+                draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, e.pol, false, sim.frame, 255);
+            }
+        }
     } else {
         for (i, e) in lvl.emitters.iter().enumerate() {
             let lbl = (b'A' + i as u8) as char;
-            draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, lvl.mode == TargetMode::QkdBb84, sim.frame, 255);
+            draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, e.pol, lvl.mode == TargetMode::QkdBb84, sim.frame, 255);
         }
     }
     if let Some((a_pos, b_pos)) = lvl.e91_targets {
@@ -667,6 +747,9 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
                 let d = 9.0 * scale;
                 p.line_segment([Pos2::new(center.x - d, center.y - d), Pos2::new(center.x + d, center.y + d)], Stroke::new(2.0 * scale, ACCENT_PURPLE));
                 p.line_segment([Pos2::new(center.x - d, center.y + d), Pos2::new(center.x + d, center.y - d)], Stroke::new(2.0 * scale, ACCENT_PURPLE));
+            }
+            if ph.dispersion > 0 {
+                p.circle_stroke(center, (11.0 + ph.dispersion.min(3) as f32 * 2.0) * scale, Stroke::new(1.5 * scale, Color32::from_rgb(125, 211, 252)));
             }
 
             p.circle_filled(center, 7.0 * scale, pcol);
@@ -742,7 +825,8 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
             if let Some(ph) = hovered_photon {
                 egui::show_tooltip_at_pointer(ui.ctx(), ui.layer_id(), egui::Id::new("photon_tip"), |ui| {
                     ui.label(egui::RichText::new(format!("Photon {} ({}nm)", ph.pid, ph.wavelength)).strong().color(ACCENT_CYAN));
-                    ui.label(format!("Fidelity: {}%  |  Noise: {}  |  Pol: '{}'", ph.fidelity, ph.noise, ph.pol.as_str()));
+                    let cd = if ph.dispersion > 0 { format!("  |  CD: {} (Needs DCF!)", ph.dispersion) } else { String::new() };
+                    ui.label(format!("Fidelity: {}%  |  Noise: {}  |  Pol: '{}'{}", ph.fidelity, ph.noise, ph.pol.as_str(), cd));
                 });
             } else if let Some((hgx, hgy)) = hover_tile {
                 if let Some(key) = doc_key_at(sim, (hgx, hgy)) {

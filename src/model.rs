@@ -88,7 +88,7 @@ impl Dir {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Pol {
     Plus,
     Cross,
@@ -118,18 +118,22 @@ pub enum Placeable {
     Delay,
     Hwp,
     Ao,
+    Dcf,
+    Wdm,
     MirrorSlash,
     MirrorBack,
 }
 
 impl Placeable {
-    pub const ALL: [Placeable; 8] = [
+    pub const ALL: [Placeable; 10] = [
         Placeable::Qfc,
         Placeable::Vbg,
         Placeable::Memory,
         Placeable::Delay,
         Placeable::Hwp,
         Placeable::Ao,
+        Placeable::Dcf,
+        Placeable::Wdm,
         Placeable::MirrorSlash,
         Placeable::MirrorBack,
     ];
@@ -142,6 +146,8 @@ impl Placeable {
             Placeable::Delay => "Delay Line",
             Placeable::Hwp => "Half-Wave Plate",
             Placeable::Ao => "Adaptive Optics",
+            Placeable::Dcf => "Dispersion Comp.",
+            Placeable::Wdm => "WDM Dichroic (\\)",
             Placeable::MirrorSlash => "Mirror (/)",
             Placeable::MirrorBack => "Mirror (\\)",
         }
@@ -155,6 +161,8 @@ impl Placeable {
             Placeable::Delay => "Adds +100ps (1-tile) sync",
             Placeable::Hwp => "Rotates polarization (+ <-> x)",
             Placeable::Ao => "Stabilizes ATMOS loss (-25% -> -5%)",
+            Placeable::Dcf => "Clears Chromatic Dispersion (CD)",
+            Placeable::Wdm => "Passes 1550nm; reflects 780/637nm (\\)",
             Placeable::MirrorSlash => "Reflects 90° (R->U, D->L)",
             Placeable::MirrorBack => "Reflects 90° (R->D, U->L)",
         }
@@ -168,6 +176,8 @@ impl Placeable {
             Placeable::Delay => ACCENT_AMBER,
             Placeable::Hwp => ACCENT_HWP,
             Placeable::Ao => ACCENT_TEAL,
+            Placeable::Dcf => Color32::from_rgb(125, 211, 252),
+            Placeable::Wdm => Color32::from_rgb(244, 114, 182),
             Placeable::MirrorSlash | Placeable::MirrorBack => ACCENT_MIRROR,
         }
     }
@@ -180,6 +190,8 @@ impl Placeable {
             Placeable::Delay => "DELAY",
             Placeable::Hwp => "HWP",
             Placeable::Ao => "AO",
+            Placeable::Dcf => "DCF",
+            Placeable::Wdm => "WDM",
             Placeable::MirrorSlash => "MIRROR_SLASH",
             Placeable::MirrorBack => "MIRROR_BACK",
         }
@@ -193,9 +205,11 @@ pub enum Tile {
     Fiber,
     LitFiber,
     PmdFiber,
+    CdFiber,
     Atmos,
     Distill,
     Repeater,
+    TeleportBsm,
     Eve,
 }
 
@@ -206,6 +220,7 @@ pub enum TargetMode {
     Qpu,
     QkdBb84,
     QkdE91,
+    Teleport,
 }
 
 impl TargetMode {
@@ -242,12 +257,18 @@ impl SimState {
     }
 }
 
+fn default_pol_plus() -> Pol {
+    Pol::Plus
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EmitterDef {
     pub gx: i32,
     pub gy: i32,
     pub dir: Dir,
     pub wavelength: u32,
+    #[serde(default = "default_pol_plus")]
+    pub pol: Pol,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,24 +293,28 @@ pub enum SandboxTool {
 }
 
 impl SandboxTool {
-    pub const OPTICS: [SandboxTool; 8] = [
+    pub const OPTICS: [SandboxTool; 10] = [
         SandboxTool::Tile(Tile::Placeable(Placeable::Qfc)),
         SandboxTool::Tile(Tile::Placeable(Placeable::Vbg)),
         SandboxTool::Tile(Tile::Placeable(Placeable::Memory)),
         SandboxTool::Tile(Tile::Placeable(Placeable::Delay)),
         SandboxTool::Tile(Tile::Placeable(Placeable::Hwp)),
         SandboxTool::Tile(Tile::Placeable(Placeable::Ao)),
+        SandboxTool::Tile(Tile::Placeable(Placeable::Dcf)),
+        SandboxTool::Tile(Tile::Placeable(Placeable::Wdm)),
         SandboxTool::Tile(Tile::Placeable(Placeable::MirrorSlash)),
         SandboxTool::Tile(Tile::Placeable(Placeable::MirrorBack)),
     ];
 
-    pub const CHANNELS: [SandboxTool; 8] = [
+    pub const CHANNELS: [SandboxTool; 10] = [
         SandboxTool::Tile(Tile::Fiber),
         SandboxTool::Tile(Tile::LitFiber),
         SandboxTool::Tile(Tile::PmdFiber),
+        SandboxTool::Tile(Tile::CdFiber),
         SandboxTool::Tile(Tile::Atmos),
         SandboxTool::Tile(Tile::Distill),
         SandboxTool::Tile(Tile::Repeater),
+        SandboxTool::Tile(Tile::TeleportBsm),
         SandboxTool::Tile(Tile::Eve),
         SandboxTool::Tile(Tile::Wall),
     ];
@@ -312,9 +337,11 @@ impl SandboxTool {
             SandboxTool::Tile(Tile::Fiber) => "1550nm Fiber",
             SandboxTool::Tile(Tile::LitFiber) => "Lit Fiber (WDM)",
             SandboxTool::Tile(Tile::PmdFiber) => "PMD Fiber",
+            SandboxTool::Tile(Tile::CdFiber) => "CD Fiber (Dispersion)",
             SandboxTool::Tile(Tile::Atmos) => "Atmosphere",
             SandboxTool::Tile(Tile::Distill) => "Distill Purifier",
             SandboxTool::Tile(Tile::Repeater) => "Quantum Repeater",
+            SandboxTool::Tile(Tile::TeleportBsm) => "Teleport BSM",
             SandboxTool::Tile(Tile::Eve) => "Eve Fiber Tap",
             SandboxTool::Tile(Tile::Wall) => "Cryostat Wall",
             SandboxTool::EmitterIon => "ION 780nm Emitter",
@@ -335,9 +362,11 @@ impl SandboxTool {
             SandboxTool::Tile(Tile::Fiber) => "1550nm only (-10% fid/tile)",
             SandboxTool::Tile(Tile::LitFiber) => "1550nm (-10% fid, +15 noise)",
             SandboxTool::Tile(Tile::PmdFiber) => "1550nm (-10% fid, flips pol)",
+            SandboxTool::Tile(Tile::CdFiber) => "1550nm (-10% fid, +dispersion)",
             SandboxTool::Tile(Tile::Atmos) => "Free-space (-25% or -5% w/ AO)",
             SandboxTool::Tile(Tile::Distill) => "2x photons -> 1x 95% photon",
             SandboxTool::Tile(Tile::Repeater) => "Hop-1 BSM (<=15ps, pol=) -> Hop-2",
+            SandboxTool::Tile(Tile::TeleportBsm) => "Measures |Psi> + EPR -> herald",
             SandboxTool::Tile(Tile::Eve) => "Intercept-resend QKD tap",
             SandboxTool::Tile(Tile::Wall) => "Opaque cryostat shield",
             SandboxTool::EmitterIon => "Fires 780nm photon (rotatable)",
@@ -358,9 +387,11 @@ impl SandboxTool {
             SandboxTool::Tile(Tile::Fiber) => ACCENT_CYAN,
             SandboxTool::Tile(Tile::LitFiber) => ACCENT_AMBER,
             SandboxTool::Tile(Tile::PmdFiber) => ACCENT_PURPLE,
+            SandboxTool::Tile(Tile::CdFiber) => Color32::from_rgb(125, 211, 252),
             SandboxTool::Tile(Tile::Atmos) => ACCENT_TEAL,
             SandboxTool::Tile(Tile::Distill) => ACCENT_GREEN,
             SandboxTool::Tile(Tile::Repeater) => ACCENT_CYAN,
+            SandboxTool::Tile(Tile::TeleportBsm) => ACCENT_AMBER,
             SandboxTool::Tile(Tile::Eve) => ACCENT_RED,
             SandboxTool::Tile(Tile::Wall) => Color32::from_rgb(130, 148, 175),
             SandboxTool::EmitterIon => ACCENT_RED,
@@ -379,9 +410,11 @@ impl SandboxTool {
             SandboxTool::Tile(Tile::Fiber) => "FIBER",
             SandboxTool::Tile(Tile::LitFiber) => "LIT_FIBER",
             SandboxTool::Tile(Tile::PmdFiber) => "PMD_FIBER",
+            SandboxTool::Tile(Tile::CdFiber) => "CD_FIBER",
             SandboxTool::Tile(Tile::Atmos) => "ATMOS",
             SandboxTool::Tile(Tile::Distill) => "DISTILL",
             SandboxTool::Tile(Tile::Repeater) => "REPEATER",
+            SandboxTool::Tile(Tile::TeleportBsm) => "TELEPORT_BSM",
             SandboxTool::Tile(Tile::Eve) => "EVE",
             SandboxTool::Tile(Tile::Wall) => "WALL",
             SandboxTool::EmitterIon => "ION",
@@ -444,7 +477,7 @@ impl SandboxBlueprint {
             name: "Free-Build Starter".to_string(),
             mode: TargetMode::Single,
             epr_source: None,
-            emitters: vec![EmitterDef { gx: 0, gy: 2, dir: Dir::Right, wavelength: 780 }],
+            emitters: vec![EmitterDef { gx: 0, gy: 2, dir: Dir::Right, wavelength: 780, pol: Pol::Plus }],
             target: Some((9, 2)),
             e91_alice: None,
             e91_bob: None,
@@ -460,8 +493,8 @@ impl SandboxBlueprint {
             mode: TargetMode::Bsm,
             epr_source: None,
             emitters: vec![
-                EmitterDef { gx: 0, gy: 1, dir: Dir::Right, wavelength: 780 },
-                EmitterDef { gx: 0, gy: 4, dir: Dir::Right, wavelength: 637 },
+                EmitterDef { gx: 0, gy: 1, dir: Dir::Right, wavelength: 780, pol: Pol::Plus },
+                EmitterDef { gx: 0, gy: 4, dir: Dir::Right, wavelength: 637, pol: Pol::Plus },
             ],
             target: Some((9, 2)),
             e91_alice: None,
@@ -483,8 +516,8 @@ impl SandboxBlueprint {
             mode: TargetMode::QkdE91,
             epr_source: Some((4, 2)),
             emitters: vec![
-                EmitterDef { gx: 4, gy: 2, dir: Dir::Left, wavelength: 780 },
-                EmitterDef { gx: 4, gy: 2, dir: Dir::Right, wavelength: 780 },
+                EmitterDef { gx: 4, gy: 2, dir: Dir::Left, wavelength: 780, pol: Pol::Plus },
+                EmitterDef { gx: 4, gy: 2, dir: Dir::Right, wavelength: 780, pol: Pol::Plus },
             ],
             target: None,
             e91_alice: Some((0, 2)),

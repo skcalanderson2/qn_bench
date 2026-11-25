@@ -1,6 +1,6 @@
 # QN Bench — Quantum Networking Optical Bench
 
-An educational 2D optical-bench puzzle game built in **Rust + `eframe`/`egui`** (compiling to **WebAssembly**, **macOS Universal**, and **Windows x64**) that teaches the real physics and hardware stack of quantum networking — single-photon transduction (`780nm`/`637nm` → `1550nm`), Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, entanglement distillation, adaptive optics satellite downlinks, and end-to-end **BB84 / E91 QKD + FIPS-197 AES-256** cryptography.
+An educational 2D optical-bench puzzle game built in **Rust + `eframe`/`egui`** (compiling to **WebAssembly**, **macOS Universal**, and **Windows x64**) that teaches the real physics and hardware stack of quantum networking — single-photon transduction (`780nm`/`637nm` → `1550nm`), Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, chromatic dispersion (`CD` + `DCF`), dichroic `WDM` wavelength routing, entanglement distillation, multi-hop repeaters, **Bennett et al. (1993) Quantum Teleportation**, adaptive optics satellite downlinks, and end-to-end **BB84 / E91 QKD + FIPS-197 AES-256** cryptography across **20 campaign levels** + Free-Build Sandbox Mode.
 
 ## Play in Browser or Download
 
@@ -38,7 +38,7 @@ Native macOS and Windows builds check GitHub Releases in the background on start
 # Run native desktop app
 cargo run --release
 
-# Run physics & NIST FIPS-197 AES-256 test suite (all 16 levels + Sandbox)
+# Run physics & NIST FIPS-197 AES-256 test suite (all 20 levels + Sandbox)
 cargo test
 
 # Run locally in browser (WebAssembly via Trunk)

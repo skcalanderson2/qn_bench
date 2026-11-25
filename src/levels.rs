@@ -1,4 +1,4 @@
-//! All 14 campaign levels and the Quantum Networking Hardware Encyclopedia.
+//! All 20 campaign levels and the Quantum Networking Hardware Encyclopedia.
 
 use crate::model::*;
 use std::collections::BTreeMap;
@@ -8,11 +8,15 @@ fn inv(pairs: &[(Placeable, u32)]) -> BTreeMap<Placeable, u32> {
 }
 
 fn em(gx: i32, gy: i32, dir: Dir) -> EmitterDef {
-    EmitterDef { gx, gy, dir, wavelength: 780 }
+    EmitterDef { gx, gy, dir, wavelength: 780, pol: Pol::Plus }
 }
 
 fn em_wl(gx: i32, gy: i32, dir: Dir, wavelength: u32) -> EmitterDef {
-    EmitterDef { gx, gy, dir, wavelength }
+    EmitterDef { gx, gy, dir, wavelength, pol: Pol::Plus }
+}
+
+fn em_pol(gx: i32, gy: i32, dir: Dir, wavelength: u32, pol: Pol) -> EmitterDef {
+    EmitterDef { gx, gy, dir, wavelength, pol }
 }
 
 pub fn hardware_doc(key: &str) -> Option<&'static HardwareDoc> {
@@ -211,6 +215,46 @@ pub const HARDWARE_DOCS: &[HardwareDoc] = &[
         physics: "Links two quantum repeater hops by performing a local Bell-State Measurement (HOM interference + polarization matching) on Hop-1 photons and sending a classical feedforward herald to release a fresh entangled qubit onto Hop-2.",
         rule: "Requires two 1550nm photons (fid>=60%, noise<=10) arriving within <=15ps with matching polarization -> emits a heralded 100% fidelity 1550nm photon Right.",
         tip: "Balance both Hop-1 arrival timing (Delay) AND polarization (HWP), then filter & refresh Hop-2 before the QPU!",
+    },
+    HardwareDoc {
+        key: "CD_FIBER",
+        title: "Dispersive Telecom Fiber (Chromatic Dispersion)",
+        color: egui::Color32::from_rgb(125, 211, 252),
+        physics: "In standard silica fiber, different spectral components of a short single-photon wavepacket travel at slightly different group velocities, stretching the pulse in time (Chromatic Dispersion) and destroying detector/HOM coherence.",
+        rule: "Transmits 1550nm (-10% fidelity/tile) AND adds Chromatic Dispersion (CD). Detectors & BSMs reject dispersed pulses.",
+        tip: "Place a Dispersion Compensating Fiber (DCF) spool AFTER the CD Fiber span to recompress the wavepacket.",
+    },
+    HardwareDoc {
+        key: "DCF",
+        title: "Dispersion Compensating Fiber / Chirped Grating (DCF)",
+        color: egui::Color32::from_rgb(125, 211, 252),
+        physics: "A specialty high-negative-dispersion fiber spool or chirped Fiber Bragg Grating that applies opposite group-delay dispersion, recompressing broadened single-photon pulses back to transform-limited width.",
+        rule: "Clears all accumulated Chromatic Dispersion (CD -> 0) without optical loss.",
+        tip: "Must be placed AFTER CD Fiber tiles — placing it before CD Fiber will not undo downstream dispersion!",
+    },
+    HardwareDoc {
+        key: "WDM",
+        title: "Dichroic WDM Wavelength Router (\\)",
+        color: egui::Color32::from_rgb(244, 114, 182),
+        physics: "A thin-film dielectric dichroic beam combiner used in Wavelength-Division Multiplexing (WDM) to merge visible and telecom-band photons onto a single shared optical axis without 50% splitting loss.",
+        rule: "Transmits 1550nm straight through; reflects visible 780nm / 637nm photons 90° like a (\\) mirror!",
+        tip: "Convert Arm A to 1550nm BEFORE the WDM, keep Arm B visible so it reflects onto Arm A's axis, then convert Arm B downstream.",
+    },
+    HardwareDoc {
+        key: "TELEPORT_BSM",
+        title: "Quantum Teleportation Bell-State Analyzer (TELE-BSM)",
+        color: ACCENT_AMBER,
+        physics: "In Bennett et al. (1993) Quantum Teleportation, Alice interferes an unknown quantum state |Psi> with her half of an entangled EPR pair on a Bell-State Analyzer, projecting both into a Bell state and broadcasting a classical feedforward herald to Bob.",
+        rule: "Requires |Psi> and EPR-Alice (1550nm, noise<=10, fid>=60%, CD=0) to arrive within <=15ps -> teleports |Psi>'s state onto Bob's distant EPR photon!",
+        tip: "Sync |Psi> and EPR-Alice to 0ps at TELE-BSM while routing EPR-Bob cleanly to TELEPORT RX.",
+    },
+    HardwareDoc {
+        key: "TELEPORT_RX",
+        title: "Quantum Teleportation Receiver & Pauli Corrector (Bob)",
+        color: ACCENT_PURPLE,
+        physics: "Receives Bob's half of the entangled EPR pair after Alice's classical Bell-measurement outcome arrives, verifying that the teleported quantum state |Psi> ('x') was reconstructed with high fidelity and zero dispersion.",
+        rule: "Requires Alice's TELE-BSM herald PLUS Bob's 1550nm photon arriving with noise<=10, fid>=60%, CD=0, and intact |Psi> ('x') state.",
+        tip: "Use DCF to clear dispersion and HWP to perform the Pauli polarization correction after PMD Fiber!",
     },
 ];
 
@@ -636,6 +680,121 @@ pub fn build_levels() -> Vec<LevelDef> {
                 (Placeable::Hwp, 1),
                 (Placeable::MirrorSlash, 3),
                 (Placeable::MirrorBack, 2),
+            ]),
+        },
+        LevelDef {
+            title: "Level 17: Chromatic Dispersion",
+            goal: "CD Fiber stretches photon pulses. Filter after Lit Fiber and recompress with DCF before SNSPD.",
+            briefing: "Act II — The Quantum Internet: Over metro fiber spans, Chromatic Dispersion (CD) smears ultra-short single-photon wavepackets in time, ruining detector timing and interference. Convert to 1550nm before the fiber, strip coexistence Raman noise AFTER the Lit Fiber, and recompress the pulse with a Dispersion Compensating Fiber (DCF) spool AFTER the CD Fiber!",
+            hint_1: "DCF only cancels dispersion that has ALREADY accumulated, and VBG must sit AFTER the Lit Fiber (+15 noise) so total noise stays <= 10.",
+            hint_2: "Place PPLN QFC at (1,2), VBG Filter at (7,2), and Dispersion Comp. (DCF) at (8,2) before the SNSPD.",
+            new_hardware: &["CD_FIBER", "DCF"],
+            mode: TargetMode::Single,
+            qkd_rounds: 0,
+            epr_source: None,
+            emitters: vec![em(0, 2, Dir::Right)],
+            target: (9, 2),
+            e91_targets: None,
+            fixed: vec![
+                ((3, 2), Tile::CdFiber),
+                ((4, 2), Tile::CdFiber),
+                ((5, 2), Tile::CdFiber),
+                ((6, 2), Tile::LitFiber),
+            ],
+            walls: vec![],
+            inventory: inv(&[
+                (Placeable::Qfc, 1),
+                (Placeable::Vbg, 1),
+                (Placeable::Dcf, 1),
+            ]),
+        },
+        LevelDef {
+            title: "Level 18: WDM Wavelength Routing",
+            goal: "Combine 1550nm (pass) and 637nm (reflect) onto one shared fiber using the WDM Dichroic and sync at BSM.",
+            briefing: "Real quantum trunks multiplex multiple emitters onto a single fiber using a Dichroic WDM Router (\\): it transmits 1550nm straight through while reflecting visible 637nm/780nm light 90°. Convert Arm A to 1550nm upstream so it passes straight through the WDM, keep Arm B at 637nm so the WDM steers it Right, then convert and filter Arm B downstream!",
+            hint_1: "Place WDM at the beam intersection (3,2). Convert Arm A to 1550nm before (3,2), leave Arm B at 637nm until AFTER (3,2), and add Delay on the shorter Arm B!",
+            hint_2: "Place QFC(1,2), Delay(3,1), WDM(3,2), QFC(4,2) (converts 637nm only!), VBG(5,2), and VBG(6,2) before the shared fiber.",
+            new_hardware: &["WDM"],
+            mode: TargetMode::Bsm,
+            qkd_rounds: 0,
+            epr_source: None,
+            emitters: vec![em_wl(0, 2, Dir::Right, 780), em_wl(3, 0, Dir::Down, 637)],
+            target: (9, 2),
+            e91_targets: None,
+            fixed: vec![
+                ((7, 2), Tile::Fiber),
+                ((8, 2), Tile::Fiber),
+            ],
+            walls: vec![],
+            inventory: inv(&[
+                (Placeable::Qfc, 2),
+                (Placeable::Vbg, 2),
+                (Placeable::Delay, 1),
+                (Placeable::Wdm, 1),
+            ]),
+        },
+        LevelDef {
+            title: "Level 19: Dispersive Metro Link",
+            goal: "Compensate dispersion on both metro arms, filter after Lit Fiber, and sync into DISTILL for QPU >=90%.",
+            briefing: "Metropolitan QPU links suffer simultaneously from fiber loss, Raman coexistence noise, and Chromatic Dispersion. Compensate dispersion on BOTH arms downstream of the CD Fiber spans, strip Arm B's Lit-Fiber noise after (4,4), balance arrival times with the Delay Line, and purify both 70% photons at DISTILL to reach the QPU >=90% threshold.",
+            hint_1: "Arm A needs DCF after (4,1) plus Delay (1 tile shorter). Arm B needs BOTH VBG and DCF AFTER its Lit/CD Fiber span before turning Up into DISTILL at (8,2).",
+            hint_2: "Arm A: QFC(1,1), VBG(2,1), DCF(6,1), Delay(7,1), \\(8,1). Arm B: QFC(1,4), VBG(6,4), DCF(7,4), /(8,4).",
+            new_hardware: &[],
+            mode: TargetMode::Qpu,
+            qkd_rounds: 0,
+            epr_source: None,
+            emitters: vec![em(0, 1, Dir::Right), em(0, 4, Dir::Right)],
+            target: (9, 2),
+            e91_targets: None,
+            fixed: vec![
+                ((3, 1), Tile::CdFiber),
+                ((4, 1), Tile::CdFiber),
+                ((5, 1), Tile::Fiber),
+                ((3, 4), Tile::CdFiber),
+                ((4, 4), Tile::LitFiber),
+                ((5, 4), Tile::Fiber),
+                ((8, 2), Tile::Distill),
+            ],
+            walls: vec![(9, 0), (9, 1), (9, 3), (9, 4), (9, 5)],
+            inventory: inv(&[
+                (Placeable::Qfc, 2),
+                (Placeable::Vbg, 2),
+                (Placeable::Dcf, 2),
+                (Placeable::Delay, 1),
+                (Placeable::MirrorSlash, 1),
+                (Placeable::MirrorBack, 1),
+            ]),
+        },
+        LevelDef {
+            title: "Level 20: Quantum Teleportation",
+            goal: "Interfere |Psi> ('x') & EPR-Alice at TELE-BSM (0ps) to teleport |Psi> onto Bob's EPR photon!",
+            briefing: "Act II Finale — Quantum Teleportation (Bennett et al., 1993): An unknown qubit |Psi> ('x') at bottom-left cannot cross the cryostat wall directly. Instead, interfere |Psi> with Alice's half of an entangled EPR pair at TELE-BSM (3,3) within <=15ps! The classical herald teleports |Psi> onto Bob's distant EPR photon — guide Bob through CD & PMD Fiber, recompress with DCF, and apply HWP Pauli correction to reconstruct |Psi> at TELEPORT RX!",
+            hint_1: "Route |Psi> (0,5) and EPR-Alice (6,1 Left) symmetrically into TELE-BSM (3,3) — both paths are 500ps! Route EPR-Bob (6,1 Right) around column 9 through CD/PMD fiber, then apply DCF and HWP before (6,4).",
+            hint_2: "|Psi>: QFC(1,5), VBG(2,5), /(3,5). EPR-A: QFC(5,1), VBG(4,1), /(3,1). EPR-B: QFC(7,1), VBG(8,1), \\(9,1), /(9,4), DCF(8,4), HWP(7,4).",
+            new_hardware: &["TELEPORT_BSM", "TELEPORT_RX"],
+            mode: TargetMode::Teleport,
+            qkd_rounds: 0,
+            epr_source: Some((6, 1)),
+            emitters: vec![
+                em_pol(0, 5, Dir::Right, 780, Pol::Cross),
+                em(6, 1, Dir::Left),
+                em(6, 1, Dir::Right),
+            ],
+            target: (6, 4),
+            e91_targets: None,
+            fixed: vec![
+                ((3, 3), Tile::TeleportBsm),
+                ((9, 2), Tile::CdFiber),
+                ((9, 3), Tile::PmdFiber),
+            ],
+            walls: vec![(5, 2), (5, 3), (5, 4), (5, 5)],
+            inventory: inv(&[
+                (Placeable::Qfc, 3),
+                (Placeable::Vbg, 3),
+                (Placeable::Dcf, 1),
+                (Placeable::Hwp, 1),
+                (Placeable::MirrorSlash, 3),
+                (Placeable::MirrorBack, 1),
             ]),
         },
     ]
