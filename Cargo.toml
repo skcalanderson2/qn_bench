@@ -1,6 +1,6 @@
 [package]
 name = "qn_bench"
-version = "2.3.1"
+version = "2.4.0"
 edition = "2021"
 description = "QN Bench — Quantum Networking Optical Bench (macOS, Windows, WebAssembly)"
 default-run = "qn_bench"
