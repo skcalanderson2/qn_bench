@@ -187,8 +187,36 @@ impl SoundEngine {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub struct SoundEngine {
+struct WasmAudioState {
     ctx: Option<web_sys::AudioContext>,
+    buffers: HashMap<SfxEvent, web_sys::AudioBuffer>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl WasmAudioState {
+    fn unlock(&mut self) {
+        if self.ctx.is_none() {
+            self.ctx = web_sys::AudioContext::new().ok();
+        }
+        if let Some(ctx) = &self.ctx {
+            if ctx.state() != web_sys::AudioContextState::Running {
+                let _ = ctx.resume();
+                // Silent 1-sample buffer unlock for Safari / WebKit autoplay policy
+                if let Ok(buf) = ctx.create_buffer(1, 1, 22_050.0) {
+                    if let Ok(src) = ctx.create_buffer_source() {
+                        src.set_buffer(Some(&buf));
+                        let _ = src.connect_with_audio_node(&ctx.destination());
+                        let _ = src.start();
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub struct SoundEngine {
+    state: std::rc::Rc<std::cell::RefCell<WasmAudioState>>,
     sounds: HashMap<SfxEvent, Vec<f32>>,
     pub muted: bool,
 }
@@ -196,8 +224,42 @@ pub struct SoundEngine {
 #[cfg(target_arch = "wasm32")]
 impl SoundEngine {
     pub fn new(muted: bool) -> Self {
-        Self {
+        use wasm_bindgen::closure::Closure;
+        use wasm_bindgen::JsCast;
+
+        let state = std::rc::Rc::new(std::cell::RefCell::new(WasmAudioState {
             ctx: None,
+            buffers: HashMap::new(),
+        }));
+
+        // Browser autoplay policies (Chrome, Safari, Firefox) require AudioContext
+        // creation and resume() to run synchronously inside a trusted DOM user gesture,
+        // NOT inside eframe's deferred requestAnimationFrame update() loop.
+        if let Some(window) = web_sys::window() {
+            let st_clone = std::rc::Rc::clone(&state);
+            let cb = Closure::<dyn FnMut(web_sys::Event)>::new(move |_ev: web_sys::Event| {
+                if let Ok(mut st) = st_clone.try_borrow_mut() {
+                    st.unlock();
+                }
+            });
+            let js_fn = cb.as_ref().unchecked_ref();
+            // Capture phase (true) ensures this runs before eframe's canvas stops propagation
+            for event_name in [
+                "pointerdown",
+                "pointerup",
+                "mousedown",
+                "click",
+                "touchstart",
+                "touchend",
+                "keydown",
+            ] {
+                let _ = window.add_event_listener_with_callback_and_bool(event_name, js_fn, true);
+            }
+            cb.forget();
+        }
+
+        Self {
+            state,
             sounds: build_all_waveforms(),
             muted,
         }
@@ -218,18 +280,31 @@ impl SoundEngine {
         if self.muted {
             return;
         }
-        if self.ctx.is_none() {
-            self.ctx = web_sys::AudioContext::new().ok();
-        }
-        let Some(ctx) = &self.ctx else { return };
-        let _ = ctx.resume();
-        let Some(samples) = self.sounds.get(&ev) else { return };
-        let Ok(buf) = ctx.create_buffer(1, samples.len() as u32, SAMPLE_RATE as f32) else {
+        let Ok(mut st) = self.state.try_borrow_mut() else {
             return;
         };
-        if buf.copy_to_channel(samples, 0).is_err() {
-            return;
+        if st.ctx.is_none() {
+            st.ctx = web_sys::AudioContext::new().ok();
         }
+        let Some(ctx) = st.ctx.clone() else { return };
+        if ctx.state() != web_sys::AudioContextState::Running {
+            let _ = ctx.resume();
+        }
+
+        let buf = if let Some(existing) = st.buffers.get(&ev) {
+            existing.clone()
+        } else {
+            let Some(samples) = self.sounds.get(&ev) else { return };
+            let Ok(b) = ctx.create_buffer(1, samples.len() as u32, SAMPLE_RATE as f32) else {
+                return;
+            };
+            if b.copy_to_channel(samples, 0).is_err() {
+                return;
+            }
+            st.buffers.insert(ev, b.clone());
+            b
+        };
+
         let Ok(src) = ctx.create_buffer_source() else { return };
         src.set_buffer(Some(&buf));
         let _ = src.connect_with_audio_node(&ctx.destination());
