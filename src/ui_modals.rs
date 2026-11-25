@@ -70,7 +70,12 @@ pub fn draw_modal_overlay(
     match cur {
         Overlay::None => {}
         Overlay::Level(idx) => {
-            let lvl = &sim.levels[idx];
+            let lvl_title = sim.levels[idx].title;
+            let lvl_briefing = sim.levels[idx].briefing;
+            let lvl_hint_1 = sim.levels[idx].hint_1;
+            let lvl_hint_2 = sim.levels[idx].hint_2;
+            let lvl_new_hw = sim.levels[idx].new_hardware;
+            let total_levels = sim.levels.len();
             let mut close = false;
             egui::Window::new("experiment_briefing")
                 .title_bar(false)
@@ -81,17 +86,17 @@ pub fn draw_modal_overlay(
                 .max_width(660.0f32.min(screen.width() - 32.0))
                 .frame(modal_frame(ACCENT_CYAN))
                 .show(ctx, |ui| {
-                    ui.label(RichText::new(format!("EXPERIMENT BRIEFING  •  LEVEL {} OF {}", idx + 1, sim.levels.len())).strong().size(11.0).color(ACCENT_CYAN));
-                    ui.label(RichText::new(lvl.title).strong().size(18.0).color(TEXT_WHITE));
+                    ui.label(RichText::new(format!("EXPERIMENT BRIEFING  •  LEVEL {} OF {}", idx + 1, total_levels)).strong().size(11.0).color(ACCENT_CYAN));
+                    ui.label(RichText::new(lvl_title).strong().size(18.0).color(TEXT_WHITE));
                     ui.separator();
                     ui.add_space(4.0);
-                    ui.label(RichText::new(lvl.briefing).size(13.5).color(TEXT_WHITE));
+                    ui.label(RichText::new(lvl_briefing).size(13.5).color(TEXT_WHITE));
 
-                    if !lvl.new_hardware.is_empty() {
-                        ui.add_space(12.0);
+                    if !lvl_new_hw.is_empty() {
+                        ui.add_space(10.0);
                         ui.label(RichText::new("NEW HARDWARE INTRODUCED IN THIS LEVEL").strong().size(11.0).color(ACCENT_AMBER));
                         ui.add_space(4.0);
-                        for &hk in lvl.new_hardware {
+                        for &hk in lvl_new_hw {
                             if let Some(doc) = hardware_doc(hk) {
                                 egui::Frame::NONE
                                     .fill(Color32::from_rgb(13, 19, 30))
@@ -105,6 +110,57 @@ pub fn draw_modal_overlay(
                                     });
                                 ui.add_space(6.0);
                             }
+                        }
+                    }
+
+                    // Progressive 2-Tier Opt-In Hint System
+                    ui.add_space(8.0);
+                    if sim.hint_tier == 0 {
+                        ui.horizontal(|ui| {
+                            let h1_btn = egui::Button::new(RichText::new("? NEED A HINT (PHYSICS NUDGE)").strong().size(11.5).color(ACCENT_AMBER))
+                                .fill(Color32::from_rgb(32, 26, 16))
+                                .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(230.0, 28.0));
+                            if ui.add(h1_btn).clicked() {
+                                sim.hint_tier = 1;
+                                sim.pending_sfx.push(SfxEvent::Select);
+                            }
+                            ui.label(RichText::new("Optional — spoilers hidden until clicked").size(11.0).color(TEXT_MUTED));
+                        });
+                    } else {
+                        egui::Frame::NONE
+                            .fill(Color32::from_rgb(28, 24, 16))
+                            .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                            .corner_radius(CornerRadius::same(7))
+                            .inner_margin(egui::Margin::symmetric(12, 8))
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.label(RichText::new("HINT 1 • PHYSICS NUDGE").strong().size(10.5).color(ACCENT_AMBER));
+                                ui.label(RichText::new(lvl_hint_1).size(12.5).color(TEXT_WHITE));
+                            });
+                        ui.add_space(6.0);
+                        if sim.hint_tier == 1 {
+                            let h2_btn = egui::Button::new(RichText::new("REVEAL TACTICAL PLACEMENT HINT").strong().size(11.5).color(ACCENT_CYAN))
+                                .fill(Color32::from_rgb(18, 30, 44))
+                                .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(240.0, 26.0));
+                            if ui.add(h2_btn).clicked() {
+                                sim.hint_tier = 2;
+                                sim.pending_sfx.push(SfxEvent::Select);
+                            }
+                        } else {
+                            egui::Frame::NONE
+                                .fill(Color32::from_rgb(14, 28, 40))
+                                .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                                .corner_radius(CornerRadius::same(7))
+                                .inner_margin(egui::Margin::symmetric(12, 8))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.label(RichText::new("HINT 2 • TACTICAL PLACEMENT").strong().size(10.5).color(ACCENT_CYAN));
+                                    ui.label(RichText::new(lvl_hint_2).size(12.5).color(TEXT_WHITE));
+                                });
                         }
                     }
 

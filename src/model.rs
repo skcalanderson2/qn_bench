@@ -564,6 +564,8 @@ impl SandboxBlueprint {
             title: "Sandbox: Free-Build Optical Bench",
             goal: "Build & test any quantum network! L-Click place • R-Click remove • Q/E rotate emitters • SPACE fire.",
             briefing: "Free-Build Sandbox Mode: unlimited optics, channels, emitters, detectors, and QKD/AES-256 hardware. Export or import JSON blueprints to share custom experiments!",
+            hint_1: "Use the OPTICS, CHANNELS, and SOURCES tabs on the right to place unlimited hardware.",
+            hint_2: "Press Q/E or click an existing emitter to aim it, L to toggle the Alignment Laser, and Ctrl/Cmd+Z to undo.",
             new_hardware: &[],
             mode: self.mode,
             qkd_rounds: 36,
@@ -579,10 +581,39 @@ impl SandboxBlueprint {
 }
 
 #[derive(Debug, Clone)]
+pub struct AlignmentSegment {
+    pub x1: i32,
+    pub y1: i32,
+    pub x2: i32,
+    pub y2: i32,
+    pub wavelength: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlignmentBeam {
+    pub label: String,
+    pub segments: Vec<AlignmentSegment>,
+    pub tiles: usize,
+    pub delay_tiles: usize,
+    pub end_pos: (i32, i32),
+    pub blocked: bool,
+    pub hit_target: bool,
+    pub final_pol: Pol,
+}
+
+impl AlignmentBeam {
+    pub fn total_ps(&self) -> usize {
+        (self.tiles + self.delay_tiles) * 100
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct LevelDef {
     pub title: &'static str,
     pub goal: &'static str,
     pub briefing: &'static str,
+    pub hint_1: &'static str,
+    pub hint_2: &'static str,
     pub new_hardware: &'static [&'static str],
     pub mode: TargetMode,
     pub qkd_rounds: usize,

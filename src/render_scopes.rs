@@ -9,6 +9,7 @@ pub struct DeckAction {
     pub jump_level: Option<usize>,
     pub toggle_sandbox: bool,
     pub open_qkd_inspector: bool,
+    pub open_hint: bool,
 }
 
 fn draw_dashed_hline(p: &Painter, x1: f32, x2: f32, y: f32, color: Color32) {
@@ -38,7 +39,12 @@ fn draw_scope_frame(p: &Painter, rect: Rect, title: &str, readout: &str, readout
 }
 
 pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
-    let mut action = DeckAction { jump_level: None, toggle_sandbox: false, open_qkd_inspector: false };
+    let mut action = DeckAction {
+        jump_level: None,
+        toggle_sandbox: false,
+        open_qkd_inspector: false,
+        open_hint: false,
+    };
     let header_title = if sim.sandbox_mode {
         format!("SANDBOX: {}", sim.sandbox_bp.name)
     } else {
@@ -142,15 +148,82 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
 
     ui.add_space(4.0);
 
-    // Status log strip
+    // Status log strip + compact QoL tools (Undo/Redo, Alignment Laser, Progressive Hint)
     egui::Frame::NONE
         .fill(Color32::from_rgb(16, 22, 32))
         .stroke(Stroke::new(1.0_f32, Color32::from_rgb(32, 42, 58)))
         .corner_radius(CornerRadius::same(5))
-        .inner_margin(egui::Margin::symmetric(8, 4))
+        .inner_margin(egui::Margin::symmetric(8, 3))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(egui::RichText::new(&sim.status_msg).size(12.5).color(sim.status_color));
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&sim.status_msg).size(12.2).color(sim.status_color))
+                        .truncate(),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+
+                    if !sim.sandbox_mode {
+                        let is_fault = sim.sim_state == SimState::Fault;
+                        let h_bg = if is_fault { Color32::from_rgb(50, 38, 16) } else { Color32::from_rgb(20, 28, 40) };
+                        let h_bd = if is_fault { ACCENT_AMBER } else { GRID_LINE };
+                        let h_fg = if is_fault { ACCENT_AMBER } else { TEXT_MUTED };
+                        let h_btn = egui::Button::new(egui::RichText::new("HINT").strong().size(9.5).color(h_fg))
+                            .fill(h_bg)
+                            .stroke(Stroke::new(1.0_f32, h_bd))
+                            .corner_radius(CornerRadius::same(4))
+                            .min_size(Vec2::new(40.0, 19.0));
+                        if ui.add(h_btn).on_hover_text("Reveal Progressive Level Hint [I]").clicked() {
+                            action.open_hint = true;
+                        }
+                    }
+
+                    let al_on = sim.align_laser;
+                    let al_bg = if al_on { Color32::from_rgb(18, 42, 54) } else { Color32::from_rgb(20, 26, 36) };
+                    let al_bd = if al_on { ACCENT_CYAN } else { GRID_LINE };
+                    let al_fg = if al_on { ACCENT_CYAN } else { TEXT_MUTED };
+                    let al_btn = egui::Button::new(egui::RichText::new("ALIGN").strong().size(9.5).color(al_fg))
+                        .fill(al_bg)
+                        .stroke(Stroke::new(1.0_f32, al_bd))
+                        .corner_radius(CornerRadius::same(4))
+                        .min_size(Vec2::new(44.0, 19.0));
+                    if ui.add(al_btn).on_hover_text("Toggle Alignment Laser & Path-Length Timing [L]").clicked() {
+                        sim.align_laser = !sim.align_laser;
+                        sim.pending_sfx.push(crate::sim::SfxEvent::Select);
+                    }
+
+                    let can_redo = sim.can_redo();
+                    let r_btn = egui::Button::new(
+                        egui::RichText::new("↷")
+                            .strong()
+                            .size(11.0)
+                            .color(if can_redo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
+                    )
+                    .fill(Color32::from_rgb(20, 26, 36))
+                    .stroke(Stroke::new(1.0_f32, if can_redo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
+                    .corner_radius(CornerRadius::same(4))
+                    .min_size(Vec2::new(22.0, 19.0));
+                    if ui.add_enabled(can_redo, r_btn).on_hover_text("Redo [Ctrl/Cmd+Shift+Z]").clicked() {
+                        sim.redo();
+                    }
+
+                    let can_undo = sim.can_undo();
+                    let u_btn = egui::Button::new(
+                        egui::RichText::new("↶")
+                            .strong()
+                            .size(11.0)
+                            .color(if can_undo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
+                    )
+                    .fill(Color32::from_rgb(20, 26, 36))
+                    .stroke(Stroke::new(1.0_f32, if can_undo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
+                    .corner_radius(CornerRadius::same(4))
+                    .min_size(Vec2::new(22.0, 19.0));
+                    if ui.add_enabled(can_undo, u_btn).on_hover_text("Undo [Ctrl/Cmd+Z]").clicked() {
+                        sim.undo();
+                    }
+                });
+            });
         });
 
     ui.add_space(6.0);

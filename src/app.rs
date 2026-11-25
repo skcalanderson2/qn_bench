@@ -18,12 +18,31 @@ use crate::updater::{UpdateManager, UpdateState};
 const STORAGE_KEY: &str = "qn_bench_state_v2";
 const STEP_DT: f64 = 1.0 / 60.0;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct PersistedState {
+    #[serde(default)]
     completed_levels: Vec<usize>,
+    #[serde(default)]
     muted: bool,
     #[serde(default)]
     sandbox_bp: Option<SandboxBlueprint>,
+    #[serde(default = "default_true")]
+    align_laser: bool,
+}
+
+impl Default for PersistedState {
+    fn default() -> Self {
+        Self {
+            completed_levels: Vec::new(),
+            muted: false,
+            sandbox_bp: None,
+            align_laser: true,
+        }
+    }
 }
 
 pub struct QnBenchApp {
@@ -58,6 +77,7 @@ impl QnBenchApp {
         if let Some(bp) = saved.sandbox_bp {
             let _ = sim.load_sandbox_blueprint(bp);
         }
+        sim.align_laser = saved.align_laser;
         sim.seen_briefings.insert(0);
 
         let sfx = SoundEngine::new(saved.muted);
@@ -138,7 +158,7 @@ impl QnBenchApp {
             return;
         }
 
-        let (fire, reset, pause, help, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
+        let (fire, reset, pause, help, hint_i, align_l, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
             let mut jump = None;
             let num_keys = [
                 Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
@@ -155,24 +175,47 @@ impl QnBenchApp {
             if i.key_pressed(Key::Minus) {
                 jump = Some(10);
             }
+            let cmd = i.modifiers.command || i.modifiers.ctrl;
+            let undo = cmd && !i.modifiers.shift && i.key_pressed(Key::Z);
+            let redo = (cmd && i.modifiers.shift && i.key_pressed(Key::Z)) || (cmd && i.key_pressed(Key::Y));
             (
                 i.key_pressed(Key::Space),
-                i.key_pressed(Key::R),
+                !cmd && i.key_pressed(Key::R),
                 i.key_pressed(Key::P),
                 i.key_pressed(Key::H),
+                i.key_pressed(Key::I),
+                i.key_pressed(Key::L),
+                undo,
+                redo,
+                i.key_pressed(Key::Enter),
                 i.key_pressed(Key::K),
                 i.key_pressed(Key::U),
                 i.key_pressed(Key::M),
-                i.key_pressed(Key::S),
-                i.key_pressed(Key::Q),
-                i.key_pressed(Key::E),
+                !cmd && i.key_pressed(Key::S),
+                !cmd && i.key_pressed(Key::Q),
+                !cmd && i.key_pressed(Key::E),
                 i.key_pressed(Key::OpenBracket) || i.key_pressed(Key::ArrowLeft),
                 i.key_pressed(Key::CloseBracket) || i.key_pressed(Key::ArrowRight),
                 jump,
             )
         });
 
-        if fire {
+        if undo_k {
+            self.sim.undo();
+        } else if redo_k {
+            self.sim.redo();
+        } else if align_l {
+            self.sim.align_laser = !self.sim.align_laser;
+            self.sfx.play(SfxEvent::Select);
+        } else if hint_i && !self.sim.sandbox_mode {
+            self.sim.hint_tier = self.sim.hint_tier.max(1);
+            self.overlay = Overlay::Level(self.sim.level_idx);
+            self.sfx.play(SfxEvent::Select);
+        } else if enter_next && self.sim.level_complete && !self.sim.sandbox_mode {
+            self.sfx.play(SfxEvent::Select);
+            let next = (self.sim.level_idx + 1) % self.sim.levels.len();
+            self.switch_level(next, None);
+        } else if fire {
             self.sim.fire_photons();
         } else if reset {
             self.sfx.play(SfxEvent::Select);
@@ -245,6 +288,7 @@ impl eframe::App for QnBenchApp {
             completed_levels: completed,
             muted: self.sfx.muted,
             sandbox_bp: Some(self.sim.sandbox_bp.clone()),
+            align_laser: self.sim.align_laser,
         };
         eframe::set_value(storage, STORAGE_KEY, &state);
     }
@@ -601,9 +645,9 @@ impl eframe::App for QnBenchApp {
 
                     // Keybind legend
                     let hint = if self.sim.sandbox_mode {
-                        "SPACE Fire • Q/E Aim • S Exit Sandbox • P Pause"
+                        "SPACE Fire • Q/E Aim • L Align • Cmd+Z Undo"
                     } else {
-                        "SPACE Fire • S Sandbox • P Pause • R Reset • H Info"
+                        "SPACE Fire • L Align • I Hint • Cmd+Z Undo"
                     };
                     ui.label(
                         RichText::new(hint)
@@ -683,6 +727,11 @@ impl eframe::App for QnBenchApp {
                     self.sfx.play(SfxEvent::Select);
                     self.overlay = Overlay::QkdAes;
                 }
+                if action.open_hint && !self.sim.sandbox_mode {
+                    self.sim.hint_tier = self.sim.hint_tier.max(1);
+                    self.overlay = Overlay::Level(self.sim.level_idx);
+                    self.sfx.play(SfxEvent::Select);
+                }
             });
 
         // Center Optical Bench Canvas
@@ -690,7 +739,10 @@ impl eframe::App for QnBenchApp {
             .frame(egui::Frame::NONE.fill(BG_DARK).inner_margin(egui::Margin::same(0)))
             .show(ctx, |ui| {
                 let ov_open = self.overlay != Overlay::None;
-                draw_optical_bench(ui, &mut self.sim, ov_open);
+                if let Some(doc_key) = draw_optical_bench(ui, &mut self.sim, ov_open) {
+                    self.overlay = Overlay::Comp(doc_key);
+                    self.sfx.play(SfxEvent::Select);
+                }
             });
 
         // Modal Overlays

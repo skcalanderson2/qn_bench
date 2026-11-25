@@ -164,6 +164,16 @@ impl Photon {
     }
 }
 
+#[derive(Debug, Clone)]
+enum UndoSnapshot {
+    Campaign {
+        grid: HashMap<(i32, i32), Tile>,
+        user_placed: HashSet<(i32, i32)>,
+        inventory: BTreeMap<Placeable, u32>,
+    },
+    Sandbox(SandboxBlueprint),
+}
+
 pub struct BenchSim {
     pub levels: Vec<LevelDef>,
     pub level_idx: usize,
@@ -175,6 +185,10 @@ pub struct BenchSim {
     pub sandbox_dir: Dir,
     pub sandbox_json_buf: String,
     pub sandbox_json_msg: Option<(String, Color32)>,
+    pub align_laser: bool,
+    pub hint_tier: u8,
+    undo_stack: Vec<UndoSnapshot>,
+    redo_stack: Vec<UndoSnapshot>,
     pub grid: HashMap<(i32, i32), Tile>,
     pub user_placed: HashSet<(i32, i32)>,
     pub inventory: BTreeMap<Placeable, u32>,
@@ -222,6 +236,10 @@ impl BenchSim {
             sandbox_dir: Dir::Right,
             sandbox_json_buf: String::new(),
             sandbox_json_msg: None,
+            align_laser: true,
+            hint_tier: 0,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             grid: HashMap::new(),
             user_placed: HashSet::new(),
             inventory: BTreeMap::new(),
@@ -270,6 +288,9 @@ impl BenchSim {
 
     pub fn enter_sandbox(&mut self) {
         self.sandbox_mode = true;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.hint_tier = 0;
         self.sync_sandbox_from_bp();
     }
 
@@ -280,6 +301,9 @@ impl BenchSim {
 
     pub fn load_sandbox_blueprint(&mut self, bp: SandboxBlueprint) -> Result<(), String> {
         bp.validate()?;
+        if self.sandbox_mode {
+            self.push_undo();
+        }
         self.sandbox_bp = bp;
         if self.sandbox_mode {
             self.sync_sandbox_from_bp();
@@ -290,6 +314,7 @@ impl BenchSim {
     }
 
     pub fn clear_sandbox(&mut self) {
+        self.push_undo();
         self.sandbox_bp = SandboxBlueprint {
             version: 1,
             name: "Blank Breadboard".to_string(),
@@ -317,6 +342,207 @@ impl BenchSim {
     pub fn refresh_sandbox_json(&mut self) {
         self.sandbox_json_buf = serde_json::to_string_pretty(&self.sandbox_bp).unwrap_or_default();
         self.sandbox_json_msg = None;
+    }
+
+    fn capture_snapshot(&self) -> UndoSnapshot {
+        if self.sandbox_mode {
+            UndoSnapshot::Sandbox(self.sandbox_bp.clone())
+        } else {
+            UndoSnapshot::Campaign {
+                grid: self.grid.clone(),
+                user_placed: self.user_placed.clone(),
+                inventory: self.inventory.clone(),
+            }
+        }
+    }
+
+    fn apply_snapshot(&mut self, snap: UndoSnapshot) {
+        match snap {
+            UndoSnapshot::Campaign { grid, user_placed, inventory } => {
+                self.grid = grid;
+                self.user_placed = user_placed;
+                self.inventory = inventory;
+                if self.selected.map_or(true, |c| self.inventory.get(&c).copied().unwrap_or(0) == 0) {
+                    self.selected = self
+                        .active_components()
+                        .into_iter()
+                        .find(|k| self.inventory.get(k).copied().unwrap_or(0) > 0);
+                }
+                self.reset_sim_keep_grid();
+            }
+            UndoSnapshot::Sandbox(bp) => {
+                self.sandbox_bp = bp;
+                self.sync_sandbox_from_bp();
+            }
+        }
+    }
+
+    fn push_undo(&mut self) {
+        let snap = self.capture_snapshot();
+        self.undo_stack.push(snap);
+        if self.undo_stack.len() > 64 {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
+    pub fn undo(&mut self) -> bool {
+        let Some(prev) = self.undo_stack.pop() else {
+            return false;
+        };
+        let cur = self.capture_snapshot();
+        self.redo_stack.push(cur);
+        self.apply_snapshot(prev);
+        self.pending_sfx.push(SfxEvent::Select);
+        true
+    }
+
+    pub fn redo(&mut self) -> bool {
+        let Some(next) = self.redo_stack.pop() else {
+            return false;
+        };
+        let cur = self.capture_snapshot();
+        self.undo_stack.push(cur);
+        self.apply_snapshot(next);
+        self.pending_sfx.push(SfxEvent::Select);
+        true
+    }
+
+    /// Trace deterministic low-power HeNe alignment beams for every emitter (plus Hop-2
+    /// previews from REPEATER / DISTILL nodes) to visualize mirror routing, QFC color shift,
+    /// fiber absorption hazards, and exact tile/picosecond path lengths.
+    pub fn trace_alignment_beams(&self) -> Vec<AlignmentBeam> {
+        let lvl = self.current_level();
+        let targets = lvl.target_coords();
+        let mut beams = Vec::new();
+        let mut hop2_origins: Vec<(i32, i32, &'static str)> = Vec::new();
+
+        let trace_one = |label: String,
+                         start_x: i32,
+                         start_y: i32,
+                         start_dir: Dir,
+                         start_wl: u32,
+                         hop2_out: &mut Vec<(i32, i32, &'static str)>|
+         -> AlignmentBeam {
+            let mut x = start_x;
+            let mut y = start_y;
+            let mut dir = start_dir;
+            let mut wl = start_wl;
+            let mut pol = Pol::Plus;
+            let mut tiles = 0usize;
+            let mut delay_tiles = 0usize;
+            let mut blocked = false;
+            let mut hit_target = false;
+            let mut segments = Vec::new();
+            let mut visited: HashSet<(i32, i32, Dir)> = HashSet::new();
+
+            for _ in 0..48 {
+                let (dx, dy) = dir.vec();
+                let nx = x + dx;
+                let ny = y + dy;
+                if !(0..GRID_COLS).contains(&nx) || !(0..GRID_ROWS).contains(&ny) {
+                    break;
+                }
+                segments.push(AlignmentSegment { x1: x, y1: y, x2: nx, y2: ny, wavelength: wl });
+                x = nx;
+                y = ny;
+                tiles += 1;
+
+                if targets.contains(&(x, y)) {
+                    hit_target = true;
+                    break;
+                }
+                if !visited.insert((x, y, dir)) {
+                    blocked = true;
+                    break;
+                }
+
+                if let Some(&tile) = self.grid.get(&(x, y)) {
+                    match tile {
+                        Tile::Wall => {
+                            blocked = true;
+                            break;
+                        }
+                        Tile::Fiber | Tile::LitFiber | Tile::PmdFiber => {
+                            if wl != 1550 {
+                                blocked = true;
+                                break;
+                            }
+                            if tile == Tile::PmdFiber {
+                                pol = pol.flipped();
+                            }
+                        }
+                        Tile::Placeable(Placeable::Qfc) => {
+                            wl = 1550;
+                        }
+                        Tile::Placeable(Placeable::Delay) => {
+                            delay_tiles += 1;
+                        }
+                        Tile::Placeable(Placeable::Hwp) => {
+                            pol = pol.flipped();
+                        }
+                        Tile::Placeable(Placeable::MirrorSlash) => {
+                            dir = dir.reflect_slash();
+                        }
+                        Tile::Placeable(Placeable::MirrorBack) => {
+                            dir = dir.reflect_back();
+                        }
+                        Tile::Distill => {
+                            if wl != 1550 {
+                                blocked = true;
+                            } else if !hop2_out.iter().any(|&(hx, hy, _)| (hx, hy) == (x, y)) {
+                                hop2_out.push((x, y, "P"));
+                            }
+                            break;
+                        }
+                        Tile::Repeater => {
+                            if wl != 1550 {
+                                blocked = true;
+                            } else if !hop2_out.iter().any(|&(hx, hy, _)| (hx, hy) == (x, y)) {
+                                hop2_out.push((x, y, "H"));
+                            }
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            AlignmentBeam {
+                label,
+                segments,
+                tiles,
+                delay_tiles,
+                end_pos: (x, y),
+                blocked,
+                hit_target,
+                final_pol: pol,
+            }
+        };
+
+        for (i, e) in lvl.emitters.iter().enumerate() {
+            let lbl = if lvl.epr_source.is_some() {
+                if i == 0 { "A".to_string() } else { "B".to_string() }
+            } else {
+                ((b'A' + i as u8) as char).to_string()
+            };
+            beams.push(trace_one(lbl, e.gx, e.gy, e.dir, e.wavelength, &mut hop2_origins));
+        }
+
+        let mut dummy = Vec::new();
+        for (hx, hy, hlbl) in hop2_origins {
+            beams.push(trace_one(hlbl.to_string(), hx, hy, Dir::Right, 1550, &mut dummy));
+        }
+
+        beams
     }
 
     pub fn sync_sandbox_from_bp(&mut self) {
@@ -389,6 +615,7 @@ impl BenchSim {
         if gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS {
             return false;
         }
+        self.push_undo();
         let pos = (gx, gy);
 
         // Clicking an existing emitter with an emitter tool rotates it in place!
@@ -518,7 +745,13 @@ impl BenchSim {
         if gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS {
             return false;
         }
+        let prev = self.capture_snapshot();
         if self.clear_sandbox_cell((gx, gy)) {
+            self.undo_stack.push(prev);
+            if self.undo_stack.len() > 64 {
+                self.undo_stack.remove(0);
+            }
+            self.redo_stack.clear();
             self.sync_sandbox_from_bp();
             self.pending_sfx.push(SfxEvent::Remove);
             true
@@ -548,6 +781,9 @@ impl BenchSim {
 
     pub fn load_level(&mut self, idx: usize) {
         self.sandbox_mode = false;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.hint_tier = 0;
         self.level_idx = idx % self.levels.len();
         let lvl = self.levels[self.level_idx].clone();
         self.grid.clear();
@@ -610,6 +846,7 @@ impl BenchSim {
         if count == 0 {
             return false;
         }
+        self.push_undo();
         self.grid.insert(pos, Tile::Placeable(comp));
         self.user_placed.insert(pos);
         self.inventory.insert(comp, count - 1);
@@ -632,9 +869,11 @@ impl BenchSim {
             return self.sandbox_remove(gx, gy);
         }
         let pos = (gx, gy);
-        if !self.user_placed.remove(&pos) {
+        if !self.user_placed.contains(&pos) {
             return false;
         }
+        self.push_undo();
+        self.user_placed.remove(&pos);
         if let Some(Tile::Placeable(comp)) = self.grid.remove(&pos) {
             *self.inventory.entry(comp).or_insert(0) += 1;
             self.selected = Some(comp);
@@ -1863,5 +2102,76 @@ mod tests {
             sim.qkd_session.as_ref().unwrap().decrypted_text,
             sim.qkd_plaintext
         );
+    }
+
+    #[test]
+    fn qol_undo_redo_and_alignment_laser_tracer() {
+        let mut sim = BenchSim::new();
+        sim.load_level(0); // Level 1: 780nm -> Fiber at (4,2) -> SNSPD (9,2)
+
+        // 1. Alignment laser detects 780nm absorption on fiber before QFC is placed
+        let beams0 = sim.trace_alignment_beams();
+        assert_eq!(beams0.len(), 1);
+        assert!(beams0[0].blocked);
+        assert_eq!(beams0[0].end_pos, (4, 2));
+
+        // 2. Placing QFC shifts alignment laser to 1550nm and reaches SNSPD target cleanly
+        sim.selected = Some(Placeable::Qfc);
+        assert!(sim.place_component(2, 2));
+        let beams1 = sim.trace_alignment_beams();
+        assert!(!beams1[0].blocked);
+        assert!(beams1[0].hit_target);
+        assert_eq!(beams1[0].total_ps(), 900); // 9 tiles * 100ps
+
+        // 3. Undo & Redo restore grid and inventory cleanly in Campaign Mode
+        assert!(sim.can_undo());
+        assert!(!sim.can_redo());
+        assert!(sim.undo());
+        assert!(!sim.grid.contains_key(&(2, 2)));
+        assert_eq!(sim.inventory.get(&Placeable::Qfc).copied(), Some(1));
+        assert!(sim.can_redo());
+        assert!(sim.redo());
+        assert!(sim.grid.contains_key(&(2, 2)));
+        assert_eq!(sim.inventory.get(&Placeable::Qfc).copied(), Some(0));
+
+        // 4. Alignment laser tracks Delay (+100ps) & HWP polarization parity on Level 8
+        sim.load_level(7);
+        for &(c, x, y) in &[
+            (Placeable::Qfc, 1, 1), (Placeable::MirrorBack, 8, 1),
+            (Placeable::Qfc, 1, 4), (Placeable::MirrorSlash, 8, 4),
+        ] {
+            sim.selected = Some(c);
+            assert!(sim.place_component(x, y));
+        }
+        let b_unsync = sim.trace_alignment_beams();
+        assert_eq!(b_unsync.len(), 2);
+        assert_eq!(b_unsync[0].total_ps(), 900);
+        assert_eq!(b_unsync[1].total_ps(), 1000);
+        assert_ne!(b_unsync[0].final_pol, b_unsync[1].final_pol);
+
+        sim.selected = Some(Placeable::Delay);
+        assert!(sim.place_component(7, 1));
+        sim.selected = Some(Placeable::Hwp);
+        assert!(sim.place_component(6, 1));
+        let b_sync = sim.trace_alignment_beams();
+        assert_eq!(b_sync[0].total_ps(), 1000);
+        assert_eq!(b_sync[1].total_ps(), 1000);
+        assert_eq!(b_sync[0].final_pol, b_sync[1].final_pol);
+
+        // 5. Undo & Redo work in Sandbox Mode too
+        sim.enter_sandbox();
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Fiber);
+        assert!(sim.place_component(3, 3));
+        assert!(sim.grid.contains_key(&(3, 3)));
+        assert!(sim.undo());
+        assert!(!sim.grid.contains_key(&(3, 3)));
+        assert!(sim.redo());
+        assert!(sim.grid.contains_key(&(3, 3)));
+
+        // 6. All 16 levels have non-empty 2-tier progressive hints
+        for lvl in &sim.levels {
+            assert!(!lvl.hint_1.is_empty());
+            assert!(!lvl.hint_2.is_empty());
+        }
     }
 }

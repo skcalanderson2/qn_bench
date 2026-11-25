@@ -50,7 +50,12 @@ trunk serve --public-url /
 ### Controls
 * **L-Click** — Place selected component (or rotate an emitter in Sandbox Mode)
 * **R-Click** — Remove placed component
+* **Shift+Click / Middle-Click** — Inspect any hardware tile's full Physics Specification (`?`)
 * **SPACE** — Fire single photon(s) / QKD burst
+* **Enter** — Advance to next level after solving
+* **L** — Toggle **Live Alignment Laser** (real-time beam routing, absorption hazard markers, and picosecond path-length/polarization sync HUD)
+* **I** — Open **Progressive 2-Tier Hint** (Physics Nudge → optional Tactical Hint)
+* **Cmd/Ctrl+Z** / **Cmd/Ctrl+Shift+Z** — Undo / Redo optical bench edits (Campaign & Sandbox)
 * **S** — Toggle **Interactive Free-Build Sandbox Mode** (unlimited optics, channels, rotatable emitters, EPR/QKD labs, & JSON blueprint sharing)
 * **Q / E** — Rotate emitter aim direction in Sandbox Mode
 * **P** — Pause / resume simulation (use `0.5x` / `1x` / `2x` pill to adjust speed)

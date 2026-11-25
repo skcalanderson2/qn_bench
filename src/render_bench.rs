@@ -1,5 +1,6 @@
 //! GPU-accelerated egui::Painter optical breadboard, hardware schematics, glow halos, and FX.
 
+use crate::levels::hardware_doc;
 use crate::model::*;
 use crate::sim::BenchSim;
 use egui::{Align2, Color32, CornerRadius, FontId, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
@@ -372,7 +373,62 @@ fn draw_target(p: &Painter, rect: Rect, mode: TargetMode, label_override: Option
     }
 }
 
-pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
+fn draw_dashed_segment(p: &Painter, a: Pos2, b: Pos2, color: Color32, width: f32, dash: f32, gap: f32, phase: f32) {
+    let delta = b - a;
+    let len = delta.length();
+    if len < 0.5 {
+        return;
+    }
+    let dir = delta / len;
+    let period = dash + gap;
+    let mut dist = (phase % period) - period;
+    while dist < len {
+        let s0 = dist.max(0.0);
+        let s1 = (dist + dash).min(len);
+        if s1 > s0 {
+            p.line_segment([a + dir * s0, a + dir * s1], Stroke::new(width, color));
+        }
+        dist += period;
+    }
+}
+
+fn doc_key_at(sim: &BenchSim, pos: (i32, i32)) -> Option<&'static str> {
+    let lvl = sim.current_level();
+    if lvl.epr_source == Some(pos) {
+        return Some("EPR");
+    }
+    if let Some(em) = lvl.emitters.iter().find(|e| (e.gx, e.gy) == pos) {
+        if lvl.mode == TargetMode::QkdBb84 {
+            return Some("QKD_TX");
+        }
+        return Some(if em.wavelength == 637 { "NV637" } else { "ION" });
+    }
+    let is_e91_rx = sim.sandbox_mode
+        && lvl.mode == TargetMode::QkdE91
+        && (sim.sandbox_bp.e91_alice == Some(pos) || sim.sandbox_bp.e91_bob == Some(pos));
+    if lvl.is_target(pos) || is_e91_rx {
+        return Some(match lvl.mode {
+            TargetMode::Single => "SNSPD",
+            TargetMode::Bsm => "BSM",
+            TargetMode::Qpu => "QPU",
+            TargetMode::QkdBb84 | TargetMode::QkdE91 => "QKD_RX",
+        });
+    }
+    sim.grid.get(&pos).map(|t| match t {
+        Tile::Placeable(p) => p.doc_key(),
+        Tile::Wall => "WALL",
+        Tile::Fiber => "FIBER",
+        Tile::LitFiber => "LIT_FIBER",
+        Tile::PmdFiber => "PMD_FIBER",
+        Tile::Atmos => "ATMOS",
+        Tile::Distill => "DISTILL",
+        Tile::Repeater => "REPEATER",
+        Tile::Eve => "EVE",
+    })
+}
+
+pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -> Option<&'static str> {
+    let mut inspect_doc: Option<&'static str> = None;
     let avail = ui.available_size();
     let scale = (avail.x / BOARD_W).min(avail.y / BOARD_H).max(0.35);
     let board_size = Vec2::new(BOARD_W * scale, BOARD_H * scale);
@@ -415,6 +471,50 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
         draw_tile_schematic(&p, tile_rect(gx, gy), tile, sim.frame, 255);
     }
 
+    // 2b. Live Alignment Laser Preview (subtle animated guide beam + timing readout when idle)
+    let align_beams = if sim.align_laser && !sim.sim_active {
+        let beams = sim.trace_alignment_beams();
+        let phase = (sim.frame as f32 * 0.7) % 16.0;
+        for beam in &beams {
+            for seg in &beam.segments {
+                let c1 = tile_rect(seg.x1, seg.y1).center();
+                let c2 = tile_rect(seg.x2, seg.y2).center();
+                let base_col = if beam.label == "H" {
+                    ACCENT_TEAL
+                } else if beam.label == "P" {
+                    ACCENT_GREEN
+                } else if seg.wavelength == 637 {
+                    ACCENT_ORANGE
+                } else if seg.wavelength == 780 {
+                    ACCENT_RED
+                } else {
+                    ACCENT_CYAN
+                };
+                draw_dashed_segment(
+                    &p,
+                    c1,
+                    c2,
+                    with_alpha(base_col, 130),
+                    (2.2 * scale).max(1.2),
+                    8.0 * scale,
+                    8.0 * scale,
+                    phase * scale,
+                );
+            }
+            if beam.blocked {
+                let end_c = tile_rect(beam.end_pos.0, beam.end_pos.1).center();
+                let d = 10.0 * scale;
+                let pulse_a = (155.0 + 75.0 * (sim.frame as f32 * 0.14).sin()) as u8;
+                let hcol = with_alpha(ACCENT_RED, pulse_a);
+                p.line_segment([Pos2::new(end_c.x - d, end_c.y - d), Pos2::new(end_c.x + d, end_c.y + d)], Stroke::new(2.5 * scale, hcol));
+                p.line_segment([Pos2::new(end_c.x - d, end_c.y + d), Pos2::new(end_c.x + d, end_c.y - d)], Stroke::new(2.5 * scale, hcol));
+            }
+        }
+        Some(beams)
+    } else {
+        None
+    };
+
     // 3. Pointer interaction + hover ghost preview + precision reticle
     let hover_tile = if !overlay_open {
         resp.hover_pos().map(|pos| {
@@ -427,7 +527,12 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
     };
 
     if let Some((hgx, hgy)) = hover_tile {
-        if resp.clicked_by(egui::PointerButton::Primary) {
+        let shift_held = ui.input(|i| i.modifiers.shift);
+        if (resp.clicked_by(egui::PointerButton::Primary) && shift_held)
+            || resp.clicked_by(egui::PointerButton::Middle)
+        {
+            inspect_doc = doc_key_at(sim, (hgx, hgy));
+        } else if resp.clicked_by(egui::PointerButton::Primary) {
             sim.place_component(hgx, hgy);
         } else if resp.clicked_by(egui::PointerButton::Secondary) {
             sim.remove_component(hgx, hgy);
@@ -578,7 +683,50 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
         p.circle_filled(to_screen(pt.x, pt.y), pt.size * scale, with_alpha(pt.color, alpha));
     }
 
-    // 7. Interactive hover tooltip for photons (when paused) or fixed/placed components
+    // 6b. Compact Alignment Laser Path-Length & Sync HUD pill (top-left of bench)
+    if let Some(beams) = &align_beams {
+        let primary: Vec<&AlignmentBeam> = beams.iter().filter(|b| b.label != "H" && b.label != "P").collect();
+        if !primary.is_empty() {
+            let mut parts: Vec<String> = primary
+                .iter()
+                .map(|b| {
+                    let st = if b.blocked {
+                        " BLOCKED"
+                    } else if b.hit_target {
+                        " OK"
+                    } else {
+                        ""
+                    };
+                    format!("{}:{}ps('{}'){}", b.label, b.total_ps(), b.final_pol.as_str(), st)
+                })
+                .collect();
+            let mut pill_col = ACCENT_CYAN;
+            if primary.len() == 2 && !sim.current_level().mode.is_qkd() {
+                let dt = (primary[0].total_ps() as i32 - primary[1].total_ps() as i32).abs();
+                let pol_ok = primary[0].final_pol == primary[1].final_pol;
+                if dt == 0 && pol_ok && !primary[0].blocked && !primary[1].blocked {
+                    parts.push("SYNC: 0ps ✓".to_string());
+                    pill_col = ACCENT_GREEN;
+                } else {
+                    parts.push(format!("Δt:{dt}ps{}", if pol_ok { "" } else { " POL!" }));
+                    pill_col = ACCENT_AMBER;
+                }
+            }
+            let hud_txt = format!("ALIGN  {}", parts.join("  •  "));
+            let hud_font = FontId::monospace((10.5 * scale).clamp(9.0, 11.5));
+            let galley = p.layout_no_wrap(hud_txt, hud_font, pill_col);
+            let pad = Vec2::new(8.0, 3.0);
+            let hud_rect = Rect::from_min_size(
+                Pos2::new(board_rect.left() + 8.0, board_rect.top() + 6.0),
+                galley.size() + pad * 2.0,
+            );
+            p.rect_filled(hud_rect, CornerRadius::same(4), Color32::from_rgba_unmultiplied(10, 14, 22, 215));
+            p.rect_stroke(hud_rect, CornerRadius::same(4), Stroke::new(1.0_f32, with_alpha(pill_col, 150)), StrokeKind::Inside);
+            p.galley(hud_rect.left_top() + pad, galley, pill_col);
+        }
+    }
+
+    // 7. Interactive hover tooltip for photons (when active/paused) or hardware tiles
     if !overlay_open {
         if let Some(pos) = resp.hover_pos() {
             let hovered_photon = sim.photons.iter().find(|ph| {
@@ -589,7 +737,27 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
                     ui.label(egui::RichText::new(format!("Photon {} ({}nm)", ph.pid, ph.wavelength)).strong().color(ACCENT_CYAN));
                     ui.label(format!("Fidelity: {}%  |  Noise: {}  |  Pol: '{}'", ph.fidelity, ph.noise, ph.pol.as_str()));
                 });
+            } else if let Some((hgx, hgy)) = hover_tile {
+                if let Some(key) = doc_key_at(sim, (hgx, hgy)) {
+                    if let Some(doc) = hardware_doc(key) {
+                        egui::show_tooltip_at_pointer(ui.ctx(), ui.layer_id(), egui::Id::new("tile_hw_tip"), |ui| {
+                            ui.set_max_width(300.0);
+                            ui.label(egui::RichText::new(doc.title).strong().size(12.0).color(doc.color));
+                            ui.label(egui::RichText::new(doc.rule).size(11.0).color(TEXT_WHITE));
+                            let sub = if sim.sandbox_mode {
+                                "R-Click: Erase • Shift+Click: Full Spec"
+                            } else if sim.user_placed.contains(&(hgx, hgy)) {
+                                "R-Click: Remove • Shift+Click: Full Spec"
+                            } else {
+                                "Shift+Click: Open Hardware Spec"
+                            };
+                            ui.label(egui::RichText::new(sub).size(10.0).color(TEXT_MUTED));
+                        });
+                    }
+                }
             }
         }
     }
+
+    inspect_doc
 }
