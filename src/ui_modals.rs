@@ -6,6 +6,7 @@ use crate::model::*;
 use crate::qkd::{hex_upper, QkdVerdict};
 use crate::render_bench::draw_tile_schematic;
 use crate::sim::{BenchSim, SfxEvent};
+use crate::video::{open_lab_video, VideoCatalog};
 use egui::{Color32, CornerRadius, RichText, Stroke, Ui, Vec2};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,6 +44,7 @@ pub fn draw_modal_overlay(
     ctx: &egui::Context,
     overlay: &mut Overlay,
     sim: &mut BenchSim,
+    videos: &VideoCatalog,
     #[cfg(not(target_arch = "wasm32"))] updater: &UpdateManager,
 ) {
     if *overlay == Overlay::None {
@@ -170,13 +172,37 @@ pub fn draw_modal_overlay(
                     }
 
                     ui.add_space(12.0);
-                    ui.vertical_centered(|ui| {
-                        let btn = egui::Button::new(RichText::new("BEGIN EXPERIMENT  [ENTER]").strong().size(14.0).color(BG_DARK))
-                            .fill(ACCENT_CYAN)
-                            .corner_radius(CornerRadius::same(7))
-                            .min_size(Vec2::new(260.0, 36.0));
-                        if ui.add(btn).clicked() {
-                            close = true;
+                    ui.horizontal(|ui| {
+                        let yt_id = videos.id_for_level(idx);
+                        if let Some(vid) = yt_id {
+                            let v_btn = egui::Button::new(RichText::new("▶ WATCH VIDEO GUIDE [V]").strong().size(13.0).color(TEXT_WHITE))
+                                .fill(Color32::from_rgb(168, 28, 42))
+                                .stroke(Stroke::new(1.0_f32, ACCENT_RED))
+                                .corner_radius(CornerRadius::same(7))
+                                .min_size(Vec2::new(210.0, 36.0));
+                            if ui.add(v_btn).on_hover_text("Watch the narrated conceptual lab video on YouTube").clicked() {
+                                open_lab_video(lvl_title, vid);
+                                sim.pending_sfx.push(SfxEvent::Select);
+                            }
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let btn = egui::Button::new(RichText::new("BEGIN EXPERIMENT  [ENTER]").strong().size(14.0).color(BG_DARK))
+                                    .fill(ACCENT_CYAN)
+                                    .corner_radius(CornerRadius::same(7))
+                                    .min_size(Vec2::new(240.0, 36.0));
+                                if ui.add(btn).clicked() {
+                                    close = true;
+                                }
+                            });
+                        } else {
+                            ui.vertical_centered(|ui| {
+                                let btn = egui::Button::new(RichText::new("BEGIN EXPERIMENT  [ENTER]").strong().size(14.0).color(BG_DARK))
+                                    .fill(ACCENT_CYAN)
+                                    .corner_radius(CornerRadius::same(7))
+                                    .min_size(Vec2::new(260.0, 36.0));
+                                if ui.add(btn).clicked() {
+                                    close = true;
+                                }
+                            });
                         }
                     });
                 });

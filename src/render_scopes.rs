@@ -11,6 +11,7 @@ pub struct DeckAction {
     pub open_qkd_inspector: bool,
     pub open_hint: bool,
     pub open_lab_report: bool,
+    pub open_video: bool,
 }
 
 fn draw_dashed_hline(p: &Painter, x1: f32, x2: f32, y: f32, color: Color32) {
@@ -39,13 +40,14 @@ fn draw_scope_frame(p: &Painter, rect: Rect, title: &str, readout: &str, readout
     }
 }
 
-pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
+pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim, has_video: bool) -> DeckAction {
     let mut action = DeckAction {
         jump_level: None,
         toggle_sandbox: false,
         open_qkd_inspector: false,
         open_hint: false,
         open_lab_report: false,
+        open_video: false,
     };
     let header_title = if sim.sandbox_mode {
         format!("SANDBOX: {}", sim.sandbox_bp.name)
@@ -211,6 +213,17 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
+
+            if !sim.sandbox_mode && has_video {
+                let v_btn = egui::Button::new(egui::RichText::new("VIDEO").strong().size(9.0).color(TEXT_WHITE))
+                    .fill(Color32::from_rgb(120, 24, 34))
+                    .stroke(Stroke::new(1.0_f32, ACCENT_RED))
+                    .corner_radius(CornerRadius::same(4))
+                    .min_size(Vec2::new(if narrow { 34.0 } else { 40.0 }, 20.0));
+                if ui.add(v_btn).on_hover_text("Watch Lab Video Guide on YouTube [V]").clicked() {
+                    action.open_video = true;
+                }
+            }
 
             if !sim.sandbox_mode {
                 let is_fault = sim.sim_state == SimState::Fault;

@@ -6,6 +6,7 @@
 /build/
 /dist/
 /docs/play/
+/videos/
 
 # Legacy Python virtualenv & caches (if present locally)
 .venv/

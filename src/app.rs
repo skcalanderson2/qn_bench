@@ -9,6 +9,7 @@ use crate::ui_modals::draw_modal_overlay;
 use crate::version::APP_VERSION;
 #[cfg(target_arch = "wasm32")]
 use crate::version::DOWNLOAD_PAGE_URL;
+use crate::video::{is_web_video_open, open_lab_video, VideoCatalog};
 use egui::{Color32, CornerRadius, Key, RichText, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +55,7 @@ impl Default for PersistedState {
 pub struct QnBenchApp {
     sim: BenchSim,
     sfx: SoundEngine,
+    videos: VideoCatalog,
     overlay: Overlay,
     accum_dt: f64,
     #[cfg(target_arch = "wasm32")]
@@ -131,6 +133,7 @@ impl QnBenchApp {
         Self {
             sim,
             sfx,
+            videos: VideoCatalog::new(),
             overlay: initial_overlay,
             accum_dt: 0.0,
             #[cfg(target_arch = "wasm32")]
@@ -170,6 +173,9 @@ impl QnBenchApp {
     }
 
     fn handle_keyboard(&mut self, ctx: &egui::Context) {
+        if is_web_video_open() {
+            return;
+        }
         // Never intercept typing when a TextEdit (e.g. AES-256 plaintext) has focus
         let text_focused = ctx.wants_keyboard_input();
 
@@ -187,6 +193,15 @@ impl QnBenchApp {
                 return;
             }
             if !text_focused && matches!(self.overlay, Overlay::Level(_) | Overlay::Comp(_)) {
+                if let Overlay::Level(idx) = self.overlay {
+                    if ctx.input(|i| i.key_pressed(Key::V)) {
+                        if let Some(vid) = self.videos.id_for_level(idx) {
+                            open_lab_video(self.sim.levels[idx].title, vid);
+                            self.sfx.play(SfxEvent::Select);
+                            return;
+                        }
+                    }
+                }
                 if ctx.input(|i| i.key_pressed(Key::Enter) || i.key_pressed(Key::Space) || i.key_pressed(Key::H)) {
                     self.overlay = Overlay::None;
                     self.sfx.play(SfxEvent::Select);
@@ -199,7 +214,7 @@ impl QnBenchApp {
             return;
         }
 
-        let (fire, reset, pause, step_dot, help, hint_i, align_l, report_g, erase_x, a11y_c, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
+        let (fire, reset, pause, step_dot, help, hint_i, video_v, align_l, report_g, erase_x, a11y_c, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
             let mut jump = None;
             let num_keys = [
                 Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
@@ -226,6 +241,7 @@ impl QnBenchApp {
                 i.key_pressed(Key::Period),
                 i.key_pressed(Key::H),
                 i.key_pressed(Key::I),
+                !cmd && i.key_pressed(Key::V),
                 i.key_pressed(Key::L),
                 !cmd && i.key_pressed(Key::G),
                 !cmd && i.key_pressed(Key::X),
@@ -256,6 +272,11 @@ impl QnBenchApp {
             self.sim.sandbox_json_msg = None;
             self.overlay = Overlay::LabReport;
             self.sfx.play(SfxEvent::Select);
+        } else if video_v && !self.sim.sandbox_mode {
+            if let Some(vid) = self.videos.id_for_level(self.sim.level_idx) {
+                open_lab_video(self.sim.levels[self.sim.level_idx].title, vid);
+                self.sfx.play(SfxEvent::Select);
+            }
         } else if erase_x {
             self.sim.erase_mode = !self.sim.erase_mode;
             self.sfx.play(SfxEvent::Select);
@@ -369,6 +390,7 @@ impl eframe::App for QnBenchApp {
             steps += 1;
         }
 
+        self.videos.poll_updates();
         self.handle_keyboard(ctx);
 
         // On WebAssembly, detect live URL hash changes (`#bp=...`) without requiring page reload
@@ -843,7 +865,9 @@ impl eframe::App for QnBenchApp {
                     .inner_margin(egui::Margin::symmetric(12, 8)),
             )
             .show(ctx, |ui| {
-                let action = draw_telemetry_deck(ui, &mut self.sim);
+                let has_video = !self.sim.sandbox_mode
+                    && self.videos.id_for_level(self.sim.level_idx).is_some();
+                let action = draw_telemetry_deck(ui, &mut self.sim, has_video);
                 if let Some(target_idx) = action.jump_level {
                     self.sfx.play(SfxEvent::Select);
                     self.switch_level(target_idx, None);
@@ -865,6 +889,12 @@ impl eframe::App for QnBenchApp {
                     self.overlay = Overlay::LabReport;
                     self.sfx.play(SfxEvent::Select);
                 }
+                if action.open_video && !self.sim.sandbox_mode {
+                    if let Some(vid) = self.videos.id_for_level(self.sim.level_idx) {
+                        open_lab_video(self.sim.levels[self.sim.level_idx].title, vid);
+                        self.sfx.play(SfxEvent::Select);
+                    }
+                }
             });
 
         // Center Optical Bench Canvas
@@ -883,6 +913,7 @@ impl eframe::App for QnBenchApp {
             ctx,
             &mut self.overlay,
             &mut self.sim,
+            &self.videos,
             #[cfg(not(target_arch = "wasm32"))]
             &self.updater,
         );

@@ -14,6 +14,7 @@ mod ui_modals;
 #[cfg(not(target_arch = "wasm32"))]
 mod updater;
 mod version;
+mod video;
 
 use app::QnBenchApp;
 #[cfg(not(target_arch = "wasm32"))]
