@@ -187,36 +187,118 @@ impl SoundEngine {
 }
 
 #[cfg(target_arch = "wasm32")]
-struct WasmAudioState {
-    ctx: Option<web_sys::AudioContext>,
-    buffers: HashMap<SfxEvent, web_sys::AudioBuffer>,
+mod wasm_audio_bridge {
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen(inline_js = r#"
+let audioCtx = null;
+let masterGain = null;
+const bufferCache = new Map();
+let listenersInstalled = false;
+
+function ensureCtx() {
+    if (!audioCtx) {
+        const Ctor = window.AudioContext || window.webkitAudioContext;
+        if (!Ctor) return null;
+        try {
+            audioCtx = new Ctor();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 1.0;
+            masterGain.connect(audioCtx.destination);
+        } catch (e) {
+            console.warn("QN Bench Web Audio init failed:", e);
+            return null;
+        }
+    }
+    return audioCtx;
 }
 
-#[cfg(target_arch = "wasm32")]
-impl WasmAudioState {
-    fn unlock(&mut self) {
-        if self.ctx.is_none() {
-            self.ctx = web_sys::AudioContext::new().ok();
+function unlockFromGesture() {
+    const ctx = ensureCtx();
+    if (!ctx) return;
+    if (ctx.state !== "running") {
+        try {
+            const p = ctx.resume();
+            if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch (_) {}
+        try {
+            const silent = ctx.createBuffer(1, 1, 22050);
+            const src = ctx.createBufferSource();
+            src.buffer = silent;
+            src.connect(masterGain || ctx.destination);
+            src.start(0);
+        } catch (_) {}
+    }
+}
+
+export function qn_audio_install_unlock() {
+    if (listenersInstalled || typeof window === "undefined") return;
+    listenersInstalled = true;
+    const events = [
+        "pointerdown",
+        "pointerup",
+        "mousedown",
+        "mouseup",
+        "click",
+        "touchstart",
+        "touchend",
+        "keydown",
+    ];
+    for (const ev of events) {
+        window.addEventListener(ev, unlockFromGesture, { capture: true, passive: true });
+    }
+}
+
+export function qn_audio_play_pcm(id, samples, sampleRate) {
+    const ctx = ensureCtx();
+    if (!ctx) return;
+
+    let buf = bufferCache.get(id);
+    if (!buf) {
+        try {
+            // Copy into an independent JS Float32Array and fill via getChannelData(0).set()
+            // (avoids WebKit/Safari AudioBuffer.copyToChannel issues with WASM memory views).
+            const pcm = new Float32Array(samples);
+            buf = ctx.createBuffer(1, pcm.length, sampleRate);
+            buf.getChannelData(0).set(pcm);
+            bufferCache.set(id, buf);
+        } catch (e) {
+            console.warn("QN Bench AudioBuffer creation failed:", e);
+            return;
         }
-        if let Some(ctx) = &self.ctx {
-            if ctx.state() != web_sys::AudioContextState::Running {
-                let _ = ctx.resume();
-                // Silent 1-sample buffer unlock for Safari / WebKit autoplay policy
-                if let Ok(buf) = ctx.create_buffer(1, 1, 22_050.0) {
-                    if let Ok(src) = ctx.create_buffer_source() {
-                        src.set_buffer(Some(&buf));
-                        let _ = src.connect_with_audio_node(&ctx.destination());
-                        let _ = src.start();
-                    }
-                }
+    }
+
+    const trigger = () => {
+        try {
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(masterGain || ctx.destination);
+            src.start(0);
+        } catch (_) {}
+    };
+
+    if (ctx.state === "running") {
+        trigger();
+    } else {
+        try {
+            const p = ctx.resume();
+            if (p && typeof p.then === "function") {
+                p.then(trigger).catch(() => {});
+            } else {
+                trigger();
             }
-        }
+        } catch (_) {}
+    }
+}
+"#)]
+    extern "C" {
+        pub fn qn_audio_install_unlock();
+        pub fn qn_audio_play_pcm(id: u8, samples: &[f32], sample_rate: f32);
     }
 }
 
 #[cfg(target_arch = "wasm32")]
 pub struct SoundEngine {
-    state: std::rc::Rc<std::cell::RefCell<WasmAudioState>>,
     sounds: HashMap<SfxEvent, Vec<f32>>,
     pub muted: bool,
 }
@@ -224,42 +306,8 @@ pub struct SoundEngine {
 #[cfg(target_arch = "wasm32")]
 impl SoundEngine {
     pub fn new(muted: bool) -> Self {
-        use wasm_bindgen::closure::Closure;
-        use wasm_bindgen::JsCast;
-
-        let state = std::rc::Rc::new(std::cell::RefCell::new(WasmAudioState {
-            ctx: None,
-            buffers: HashMap::new(),
-        }));
-
-        // Browser autoplay policies (Chrome, Safari, Firefox) require AudioContext
-        // creation and resume() to run synchronously inside a trusted DOM user gesture,
-        // NOT inside eframe's deferred requestAnimationFrame update() loop.
-        if let Some(window) = web_sys::window() {
-            let st_clone = std::rc::Rc::clone(&state);
-            let cb = Closure::<dyn FnMut(web_sys::Event)>::new(move |_ev: web_sys::Event| {
-                if let Ok(mut st) = st_clone.try_borrow_mut() {
-                    st.unlock();
-                }
-            });
-            let js_fn = cb.as_ref().unchecked_ref();
-            // Capture phase (true) ensures this runs before eframe's canvas stops propagation
-            for event_name in [
-                "pointerdown",
-                "pointerup",
-                "mousedown",
-                "click",
-                "touchstart",
-                "touchend",
-                "keydown",
-            ] {
-                let _ = window.add_event_listener_with_callback_and_bool(event_name, js_fn, true);
-            }
-            cb.forget();
-        }
-
+        wasm_audio_bridge::qn_audio_install_unlock();
         Self {
-            state,
             sounds: build_all_waveforms(),
             muted,
         }
@@ -280,34 +328,8 @@ impl SoundEngine {
         if self.muted {
             return;
         }
-        let Ok(mut st) = self.state.try_borrow_mut() else {
-            return;
-        };
-        if st.ctx.is_none() {
-            st.ctx = web_sys::AudioContext::new().ok();
+        if let Some(samples) = self.sounds.get(&ev) {
+            wasm_audio_bridge::qn_audio_play_pcm(ev as u8, samples, SAMPLE_RATE as f32);
         }
-        let Some(ctx) = st.ctx.clone() else { return };
-        if ctx.state() != web_sys::AudioContextState::Running {
-            let _ = ctx.resume();
-        }
-
-        let buf = if let Some(existing) = st.buffers.get(&ev) {
-            existing.clone()
-        } else {
-            let Some(samples) = self.sounds.get(&ev) else { return };
-            let Ok(b) = ctx.create_buffer(1, samples.len() as u32, SAMPLE_RATE as f32) else {
-                return;
-            };
-            if b.copy_to_channel(samples, 0).is_err() {
-                return;
-            }
-            st.buffers.insert(ev, b.clone());
-            b
-        };
-
-        let Ok(src) = ctx.create_buffer_source() else { return };
-        src.set_buffer(Some(&buf));
-        let _ = src.connect_with_audio_node(&ctx.destination());
-        let _ = src.start();
     }
 }
