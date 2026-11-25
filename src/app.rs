@@ -50,6 +50,8 @@ pub struct QnBenchApp {
     sfx: SoundEngine,
     overlay: Overlay,
     accum_dt: f64,
+    #[cfg(target_arch = "wasm32")]
+    last_hash: String,
     #[cfg(not(target_arch = "wasm32"))]
     updater: UpdateManager,
 }
@@ -85,9 +87,12 @@ impl QnBenchApp {
 
         // On WebAssembly, automatically open shared Sandbox URLs (`#bp=<base64url>`)
         #[cfg(target_arch = "wasm32")]
-        if let Some(hash) = web_sys::window().and_then(|w| w.location().hash().ok()) {
-            if hash.contains("#bp=") {
-                if let Ok(bp) = SandboxBlueprint::from_share_str(&hash) {
+        let last_hash = {
+            let h = web_sys::window()
+                .and_then(|w| w.location().hash().ok())
+                .unwrap_or_default();
+            if h.contains("#bp=") {
+                if let Ok(bp) = SandboxBlueprint::from_share_str(&h) {
                     let bp_name = bp.name.clone();
                     if sim.load_sandbox_blueprint(bp).is_ok() {
                         sim.enter_sandbox();
@@ -97,7 +102,8 @@ impl QnBenchApp {
                     }
                 }
             }
-        }
+            h
+        };
 
         let sfx = SoundEngine::new(saved.muted);
 
@@ -113,6 +119,8 @@ impl QnBenchApp {
             sfx,
             overlay: initial_overlay,
             accum_dt: 0.0,
+            #[cfg(target_arch = "wasm32")]
+            last_hash,
             #[cfg(not(target_arch = "wasm32"))]
             updater,
         }
@@ -329,6 +337,26 @@ impl eframe::App for QnBenchApp {
         }
 
         self.handle_keyboard(ctx);
+
+        // On WebAssembly, detect live URL hash changes (`#bp=...`) without requiring page reload
+        #[cfg(target_arch = "wasm32")]
+        if let Some(h) = web_sys::window().and_then(|w| w.location().hash().ok()) {
+            if h != self.last_hash {
+                self.last_hash = h.clone();
+                if h.contains("#bp=") {
+                    if let Ok(bp) = SandboxBlueprint::from_share_str(&h) {
+                        let bp_name = bp.name.clone();
+                        if self.sim.load_sandbox_blueprint(bp).is_ok() {
+                            self.sim.enter_sandbox();
+                            self.sim.status_msg = format!("Loaded shared Sandbox blueprint: {bp_name}!");
+                            self.sim.status_color = ACCENT_GREEN;
+                            self.overlay = Overlay::None;
+                            self.sfx.play(SfxEvent::Place);
+                        }
+                    }
+                }
+            }
+        }
 
         // Poll native updater for unseen update prompt or ready-to-quit relaunch
         #[cfg(not(target_arch = "wasm32"))]
@@ -725,7 +753,7 @@ impl eframe::App for QnBenchApp {
 
         // Bottom Telemetry & Oscilloscope Panel
         egui::TopBottomPanel::bottom("telemetry_deck")
-            .exact_height(190.0)
+            .exact_height(206.0)
             .resizable(false)
             .frame(
                 egui::Frame::NONE

@@ -54,11 +54,9 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
     let lvl_mode = sim.current_level().mode;
     let total_levels = sim.levels.len();
 
-    // Header row: Level title, clickable pills 1..16 + SANDBOX, speed/pause controls, clock, status badge
+    // Row 1: Level title (left) + Speed / Pause / Clock / Status badge (right)
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 5.0;
-        ui.add(egui::Label::new(egui::RichText::new(header_title).strong().size(14.0).color(header_col)).truncate());
-
+        ui.spacing_mut().item_spacing.x = 6.0;
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Status badge
             let (st_fg, st_bg) = sim.sim_state.colors();
@@ -110,45 +108,117 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
                 };
             }
 
-            ui.add_space(4.0);
+            // Title occupies remaining left space cleanly without overflow
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.add(egui::Label::new(egui::RichText::new(header_title).strong().size(14.5).color(header_col)).truncate());
+            });
+        });
+    });
 
-            // SANDBOX toggle pill (drawn right-to-left, so it sits immediately right of Level 14)
-            let sb_on = sim.sandbox_mode;
-            let sb_bg = if sb_on { Color32::from_rgb(56, 36, 92) } else { Color32::from_rgb(24, 22, 38) };
-            let sb_bd = if sb_on { ACCENT_PURPLE } else { Color32::from_rgb(84, 68, 124) };
-            let sb_fg = if sb_on { TEXT_WHITE } else { ACCENT_PURPLE };
-            let sb_btn = egui::Button::new(egui::RichText::new("SANDBOX").strong().size(10.0).color(sb_fg))
-                .fill(sb_bg)
-                .stroke(Stroke::new(1.0_f32, sb_bd))
+    ui.add_space(3.0);
+
+    // Row 2: Level pills 1..16 + SANDBOX (left) and UNDO / REDO / ALIGN / HINT (right)
+    let narrow = ui.available_width() < 590.0;
+    let pill_w = if narrow { 14.5 } else { 18.0 };
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for i in 0..total_levels {
+            let is_cur = !sim.sandbox_mode && i == sim.level_idx;
+            let is_done = sim.completed_levels.contains(&i);
+            let bg = if is_cur { Color32::from_rgb(36, 56, 78) } else { Color32::from_rgb(18, 24, 34) };
+            let bd = if is_cur { ACCENT_CYAN } else if is_done { ACCENT_GREEN } else { GRID_LINE };
+            let fg = if is_cur { TEXT_WHITE } else if is_done { ACCENT_GREEN } else { TEXT_MUTED };
+            let btn = egui::Button::new(egui::RichText::new(format!("{}", i + 1)).strong().size(if narrow { 9.0 } else { 9.5 }).color(fg))
+                .fill(bg)
+                .stroke(Stroke::new(1.0_f32, bd))
                 .corner_radius(CornerRadius::same(4))
-                .min_size(Vec2::new(60.0, 20.0));
-            if ui.add(sb_btn).on_hover_text("Toggle Free-Build Sandbox Mode [S]").clicked() {
-                action.toggle_sandbox = true;
+                .min_size(Vec2::new(pill_w, 20.0));
+            if ui.add(btn).on_hover_text(sim.levels[i].title).clicked() {
+                action.jump_level = Some(i);
+            }
+        }
+
+        ui.add_space(2.0);
+        let sb_on = sim.sandbox_mode;
+        let sb_bg = if sb_on { Color32::from_rgb(56, 36, 92) } else { Color32::from_rgb(24, 22, 38) };
+        let sb_bd = if sb_on { ACCENT_PURPLE } else { Color32::from_rgb(84, 68, 124) };
+        let sb_fg = if sb_on { TEXT_WHITE } else { ACCENT_PURPLE };
+        let sb_btn = egui::Button::new(egui::RichText::new("SANDBOX").strong().size(9.5).color(sb_fg))
+            .fill(sb_bg)
+            .stroke(Stroke::new(1.0_f32, sb_bd))
+            .corner_radius(CornerRadius::same(4))
+            .min_size(Vec2::new(if narrow { 50.0 } else { 58.0 }, 20.0));
+        if ui.add(sb_btn).on_hover_text("Toggle Free-Build Sandbox Mode [S]").clicked() {
+            action.toggle_sandbox = true;
+        }
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+
+            if !sim.sandbox_mode {
+                let is_fault = sim.sim_state == SimState::Fault;
+                let h_bg = if is_fault { Color32::from_rgb(50, 38, 16) } else { Color32::from_rgb(20, 28, 40) };
+                let h_bd = if is_fault { ACCENT_AMBER } else { GRID_LINE };
+                let h_fg = if is_fault { ACCENT_AMBER } else { TEXT_MUTED };
+                let h_btn = egui::Button::new(egui::RichText::new("HINT").strong().size(9.5).color(h_fg))
+                    .fill(h_bg)
+                    .stroke(Stroke::new(1.0_f32, h_bd))
+                    .corner_radius(CornerRadius::same(4))
+                    .min_size(Vec2::new(38.0, 20.0));
+                if ui.add(h_btn).on_hover_text("Reveal Progressive Level Hint [I]").clicked() {
+                    action.open_hint = true;
+                }
             }
 
-            // Level pills (drawn right-to-left so index 1..N reads left-to-right!)
-            ui.spacing_mut().item_spacing.x = 2.0;
-            for i in (0..total_levels).rev() {
-                let is_cur = !sim.sandbox_mode && i == sim.level_idx;
-                let is_done = sim.completed_levels.contains(&i);
-                let bg = if is_cur { Color32::from_rgb(36, 56, 78) } else { Color32::from_rgb(18, 24, 34) };
-                let bd = if is_cur { ACCENT_CYAN } else if is_done { ACCENT_GREEN } else { GRID_LINE };
-                let fg = if is_cur { TEXT_WHITE } else if is_done { ACCENT_GREEN } else { TEXT_MUTED };
-                let btn = egui::Button::new(egui::RichText::new(format!("{}", i + 1)).strong().size(9.5).color(fg))
-                    .fill(bg)
-                    .stroke(Stroke::new(1.0_f32, bd))
-                    .corner_radius(CornerRadius::same(4))
-                    .min_size(Vec2::new(17.5, 20.0));
-                if ui.add(btn).on_hover_text(sim.levels[i].title).clicked() {
-                    action.jump_level = Some(i);
-                }
+            let al_on = sim.align_laser;
+            let al_bg = if al_on { Color32::from_rgb(18, 42, 54) } else { Color32::from_rgb(20, 26, 36) };
+            let al_bd = if al_on { ACCENT_CYAN } else { GRID_LINE };
+            let al_fg = if al_on { ACCENT_CYAN } else { TEXT_MUTED };
+            let al_btn = egui::Button::new(egui::RichText::new("ALIGN").strong().size(9.5).color(al_fg))
+                .fill(al_bg)
+                .stroke(Stroke::new(1.0_f32, al_bd))
+                .corner_radius(CornerRadius::same(4))
+                .min_size(Vec2::new(42.0, 20.0));
+            if ui.add(al_btn).on_hover_text("Toggle Alignment Laser & Path-Length Timing [L]").clicked() {
+                sim.align_laser = !sim.align_laser;
+                sim.pending_sfx.push(crate::sim::SfxEvent::Select);
+            }
+
+            let can_redo = sim.can_redo();
+            let r_btn = egui::Button::new(
+                egui::RichText::new("REDO")
+                    .strong()
+                    .size(9.5)
+                    .color(if can_redo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
+            )
+            .fill(Color32::from_rgb(20, 26, 36))
+            .stroke(Stroke::new(1.0_f32, if can_redo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
+            .corner_radius(CornerRadius::same(4))
+            .min_size(Vec2::new(36.0, 20.0));
+            if ui.add_enabled(can_redo, r_btn).on_hover_text("Redo [Ctrl/Cmd+Shift+Z]").clicked() {
+                sim.redo();
+            }
+
+            let can_undo = sim.can_undo();
+            let u_btn = egui::Button::new(
+                egui::RichText::new("UNDO")
+                    .strong()
+                    .size(9.5)
+                    .color(if can_undo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
+            )
+            .fill(Color32::from_rgb(20, 26, 36))
+            .stroke(Stroke::new(1.0_f32, if can_undo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
+            .corner_radius(CornerRadius::same(4))
+            .min_size(Vec2::new(36.0, 20.0));
+            if ui.add_enabled(can_undo, u_btn).on_hover_text("Undo [Ctrl/Cmd+Z]").clicked() {
+                sim.undo();
             }
         });
     });
 
-    ui.add_space(4.0);
+    ui.add_space(3.0);
 
-    // Status log strip + compact QoL tools (Undo/Redo, Alignment Laser, Progressive Hint)
+    // Row 3: Full-width status log strip (zero button collisions!)
     egui::Frame::NONE
         .fill(Color32::from_rgb(16, 22, 32))
         .stroke(Stroke::new(1.0_f32, Color32::from_rgb(32, 42, 58)))
@@ -156,83 +226,19 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
         .inner_margin(egui::Margin::symmetric(8, 3))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::Label::new(egui::RichText::new(&sim.status_msg).size(12.2).color(sim.status_color))
-                        .truncate(),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-
-                    if !sim.sandbox_mode {
-                        let is_fault = sim.sim_state == SimState::Fault;
-                        let h_bg = if is_fault { Color32::from_rgb(50, 38, 16) } else { Color32::from_rgb(20, 28, 40) };
-                        let h_bd = if is_fault { ACCENT_AMBER } else { GRID_LINE };
-                        let h_fg = if is_fault { ACCENT_AMBER } else { TEXT_MUTED };
-                        let h_btn = egui::Button::new(egui::RichText::new("HINT").strong().size(9.5).color(h_fg))
-                            .fill(h_bg)
-                            .stroke(Stroke::new(1.0_f32, h_bd))
-                            .corner_radius(CornerRadius::same(4))
-                            .min_size(Vec2::new(40.0, 19.0));
-                        if ui.add(h_btn).on_hover_text("Reveal Progressive Level Hint [I]").clicked() {
-                            action.open_hint = true;
-                        }
-                    }
-
-                    let al_on = sim.align_laser;
-                    let al_bg = if al_on { Color32::from_rgb(18, 42, 54) } else { Color32::from_rgb(20, 26, 36) };
-                    let al_bd = if al_on { ACCENT_CYAN } else { GRID_LINE };
-                    let al_fg = if al_on { ACCENT_CYAN } else { TEXT_MUTED };
-                    let al_btn = egui::Button::new(egui::RichText::new("ALIGN").strong().size(9.5).color(al_fg))
-                        .fill(al_bg)
-                        .stroke(Stroke::new(1.0_f32, al_bd))
-                        .corner_radius(CornerRadius::same(4))
-                        .min_size(Vec2::new(44.0, 19.0));
-                    if ui.add(al_btn).on_hover_text("Toggle Alignment Laser & Path-Length Timing [L]").clicked() {
-                        sim.align_laser = !sim.align_laser;
-                        sim.pending_sfx.push(crate::sim::SfxEvent::Select);
-                    }
-
-                    let can_redo = sim.can_redo();
-                    let r_btn = egui::Button::new(
-                        egui::RichText::new("REDO")
-                            .strong()
-                            .size(9.5)
-                            .color(if can_redo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
-                    )
-                    .fill(Color32::from_rgb(20, 26, 36))
-                    .stroke(Stroke::new(1.0_f32, if can_redo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
-                    .corner_radius(CornerRadius::same(4))
-                    .min_size(Vec2::new(38.0, 19.0));
-                    if ui.add_enabled(can_redo, r_btn).on_hover_text("Redo [Ctrl/Cmd+Shift+Z]").clicked() {
-                        sim.redo();
-                    }
-
-                    let can_undo = sim.can_undo();
-                    let u_btn = egui::Button::new(
-                        egui::RichText::new("UNDO")
-                            .strong()
-                            .size(9.5)
-                            .color(if can_undo { TEXT_WHITE } else { Color32::from_rgb(64, 76, 94) }),
-                    )
-                    .fill(Color32::from_rgb(20, 26, 36))
-                    .stroke(Stroke::new(1.0_f32, if can_undo { GRID_LINE } else { Color32::from_rgb(28, 34, 46) }))
-                    .corner_radius(CornerRadius::same(4))
-                    .min_size(Vec2::new(38.0, 19.0));
-                    if ui.add_enabled(can_undo, u_btn).on_hover_text("Undo [Ctrl/Cmd+Z]").clicked() {
-                        sim.undo();
-                    }
-                });
-            });
+            ui.add(
+                egui::Label::new(egui::RichText::new(&sim.status_msg).size(12.0).color(sim.status_color))
+                    .truncate(),
+            );
         });
 
-    ui.add_space(6.0);
+    ui.add_space(5.0);
 
-    // 3 Oscilloscope Panes
-    let scope_h = 104.0;
+    // Row 4: 3 Oscilloscope Panes (fluidly fit any width!)
+    let scope_h = 98.0;
     let total_w = ui.available_width();
     let gap = 8.0;
-    let pane_w = ((total_w - 2.0 * gap) / 3.0).max(160.0);
+    let pane_w = ((total_w - 2.0 * gap) / 3.0).max(110.0);
 
     if lvl_mode.is_qkd() {
         ui.horizontal(|ui| {

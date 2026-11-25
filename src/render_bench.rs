@@ -430,16 +430,19 @@ fn doc_key_at(sim: &BenchSim, pos: (i32, i32)) -> Option<&'static str> {
 pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -> Option<&'static str> {
     let mut inspect_doc: Option<&'static str> = None;
     let avail = ui.available_size();
-    let scale = (avail.x / BOARD_W).min(avail.y / BOARD_H).max(0.35);
+    let hud_reserve = 26.0;
+    let grid_avail_h = (avail.y - hud_reserve).max(160.0);
+    let scale = (avail.x / BOARD_W).min(grid_avail_h / BOARD_H).max(0.35);
     let board_size = Vec2::new(BOARD_W * scale, BOARD_H * scale);
 
     let (outer_rect, _) = ui.allocate_exact_size(avail, Sense::hover());
     let origin = Pos2::new(
         outer_rect.left() + ((avail.x - board_size.x) * 0.5).max(0.0),
-        outer_rect.top() + ((avail.y - board_size.y) * 0.5).max(0.0),
+        outer_rect.top() + hud_reserve + ((grid_avail_h - board_size.y) * 0.5).max(0.0),
     );
     let board_rect = Rect::from_min_size(origin, board_size);
     let resp = ui.interact(board_rect, ui.id().with("optical_bench"), Sense::click());
+    let p_outer = ui.painter_at(outer_rect);
     let p = ui.painter_at(board_rect);
 
     let tile_rect = |gx: i32, gy: i32| -> Rect {
@@ -714,15 +717,19 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
             }
             let hud_txt = format!("ALIGN  {}", parts.join("  •  "));
             let hud_font = FontId::monospace((10.5 * scale).clamp(9.0, 11.5));
-            let galley = p.layout_no_wrap(hud_txt, hud_font, pill_col);
-            let pad = Vec2::new(8.0, 3.0);
+            let galley = p_outer.layout_no_wrap(hud_txt, hud_font, pill_col);
+            let pad = Vec2::new(10.0, 3.0);
+            let box_sz = galley.size() + pad * 2.0;
             let hud_rect = Rect::from_min_size(
-                Pos2::new(board_rect.left() + 8.0, board_rect.top() + 6.0),
-                galley.size() + pad * 2.0,
+                Pos2::new(
+                    board_rect.center().x - box_sz.x * 0.5,
+                    (board_rect.top() - box_sz.y - 4.0).max(outer_rect.top() + 3.0),
+                ),
+                box_sz,
             );
-            p.rect_filled(hud_rect, CornerRadius::same(4), Color32::from_rgba_unmultiplied(10, 14, 22, 215));
-            p.rect_stroke(hud_rect, CornerRadius::same(4), Stroke::new(1.0_f32, with_alpha(pill_col, 150)), StrokeKind::Inside);
-            p.galley(hud_rect.left_top() + pad, galley, pill_col);
+            p_outer.rect_filled(hud_rect, CornerRadius::same(4), Color32::from_rgba_unmultiplied(12, 18, 28, 235));
+            p_outer.rect_stroke(hud_rect, CornerRadius::same(4), Stroke::new(1.0_f32, with_alpha(pill_col, 160)), StrokeKind::Inside);
+            p_outer.galley(hud_rect.left_top() + pad, galley, pill_col);
         }
     }
 
