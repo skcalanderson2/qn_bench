@@ -48,13 +48,15 @@ trunk serve --public-url /
 *(The original Python + Pygame `v1.1.0` prototype is preserved on the `python-v1` branch.)*
 
 ### Controls
-* **L-Click** — Place selected optical component
+* **L-Click** — Place selected component (or rotate an emitter in Sandbox Mode)
 * **R-Click** — Remove placed component
 * **SPACE** — Fire single photon(s) / QKD burst
+* **S** — Toggle **Interactive Free-Build Sandbox Mode** (unlimited optics, channels, rotatable emitters, EPR/QKD labs, & JSON blueprint sharing)
+* **Q / E** — Rotate emitter aim direction in Sandbox Mode
 * **P** — Pause / resume simulation (use `0.5x` / `1x` / `2x` pill to adjust speed)
-* **R** — Reset current level
-* **H** — Open Experiment Briefing overlay
-* **K** — Open QKD & AES-256 Inspector (on Levels 12–14)
+* **R** — Reset current level (or stop/reset beam in Sandbox Mode)
+* **H** — Open Experiment Briefing (or Sandbox Templates / JSON Blueprints modal)
+* **K** — Open QKD & AES-256 Inspector (on Levels 12–14 or Sandbox QKD benches)
 * **U** — Check for software updates (desktop)
 * **M** — Mute / unmute procedural lab audio
-* **1–9, 0, -, [ / ]** — Switch levels
+* **1–9, 0, -, [ / ]** — Switch campaign levels

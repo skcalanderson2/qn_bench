@@ -201,58 +201,75 @@ pub fn draw_tile_schematic(p: &Painter, rect: Rect, tile: Tile, frame: u64, alph
     }
 }
 
-fn draw_epr_source(p: &Painter, rect: Rect, frame: u64) {
+fn draw_epr_source(p: &Painter, rect: Rect, vertical: bool, frame: u64, alpha: u8) {
     let s = rect.width() / TILE_SIZE;
     let inner = rect.shrink(6.0 * s);
     let cx = inner.center().x;
     let cy = inner.center().y;
-    p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), Color32::from_rgb(34, 22, 56));
-    p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, ACCENT_PURPLE), StrokeKind::Inside);
-    draw_radial_glow(p, Pos2::new(cx, cy - 4.0 * s), 26.0 * s, ACCENT_PURPLE, 120);
-    p.add(egui::Shape::convex_polygon(
-        vec![Pos2::new(cx - 28.0 * s, cy - 4.0 * s), Pos2::new(cx - 21.0 * s, cy - 9.0 * s), Pos2::new(cx - 21.0 * s, cy + 1.0 * s)],
-        ACCENT_CYAN, Stroke::NONE,
-    ));
-    p.add(egui::Shape::convex_polygon(
-        vec![Pos2::new(cx + 28.0 * s, cy - 4.0 * s), Pos2::new(cx + 21.0 * s, cy - 9.0 * s), Pos2::new(cx + 21.0 * s, cy + 1.0 * s)],
-        ACCENT_CYAN, Stroke::NONE,
-    ));
+    let col = |c: Color32| with_alpha(c, ((c.a() as u32 * alpha as u32) / 255) as u8);
+    p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(Color32::from_rgb(34, 22, 56)));
+    p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(ACCENT_PURPLE)), StrokeKind::Inside);
+    if alpha >= 200 {
+        draw_radial_glow(p, Pos2::new(cx, cy - 4.0 * s), 26.0 * s, ACCENT_PURPLE, 120);
+    }
+    if vertical {
+        p.add(egui::Shape::convex_polygon(
+            vec![Pos2::new(cx, cy - 28.0 * s), Pos2::new(cx - 5.0 * s, cy - 21.0 * s), Pos2::new(cx + 5.0 * s, cy - 21.0 * s)],
+            col(ACCENT_CYAN), Stroke::NONE,
+        ));
+        p.add(egui::Shape::convex_polygon(
+            vec![Pos2::new(cx, cy + 20.0 * s), Pos2::new(cx - 5.0 * s, cy + 13.0 * s), Pos2::new(cx + 5.0 * s, cy + 13.0 * s)],
+            col(ACCENT_CYAN), Stroke::NONE,
+        ));
+    } else {
+        p.add(egui::Shape::convex_polygon(
+            vec![Pos2::new(cx - 28.0 * s, cy - 4.0 * s), Pos2::new(cx - 21.0 * s, cy - 9.0 * s), Pos2::new(cx - 21.0 * s, cy + 1.0 * s)],
+            col(ACCENT_CYAN), Stroke::NONE,
+        ));
+        p.add(egui::Shape::convex_polygon(
+            vec![Pos2::new(cx + 28.0 * s, cy - 4.0 * s), Pos2::new(cx + 21.0 * s, cy - 9.0 * s), Pos2::new(cx + 21.0 * s, cy + 1.0 * s)],
+            col(ACCENT_CYAN), Stroke::NONE,
+        ));
+    }
     let diamond = vec![
         Pos2::new(cx, cy - 20.0 * s),
         Pos2::new(cx + 15.0 * s, cy - 4.0 * s),
         Pos2::new(cx, cy + 12.0 * s),
         Pos2::new(cx - 15.0 * s, cy - 4.0 * s),
     ];
-    p.add(egui::Shape::convex_polygon(diamond, Color32::from_rgb(62, 42, 110), Stroke::new(2.0 * s, Color32::from_rgb(218, 198, 255))));
+    p.add(egui::Shape::convex_polygon(diamond, col(Color32::from_rgb(62, 42, 110)), Stroke::new(2.0 * s, col(Color32::from_rgb(218, 198, 255)))));
     let pulse = (4.0 + 1.8 * (frame as f32 * 0.13).sin()) * s;
-    p.circle_filled(Pos2::new(cx, cy - 4.0 * s), pulse, ACCENT_CYAN);
-    p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "EPR PAIR", FontId::proportional((10.0 * s).max(8.0)), ACCENT_PURPLE);
+    p.circle_filled(Pos2::new(cx, cy - 4.0 * s), pulse, col(ACCENT_CYAN));
+    p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "EPR PAIR", FontId::proportional((10.0 * s).max(8.0)), col(ACCENT_PURPLE));
 }
 
-fn draw_emitter(p: &Painter, rect: Rect, label: char, dir: Dir, wl: u32, is_qkd_tx: bool, frame: u64) {
+fn draw_emitter(p: &Painter, rect: Rect, label: char, dir: Dir, wl: u32, is_qkd_tx: bool, frame: u64, alpha: u8) {
     let s = rect.width() / TILE_SIZE;
     let inner = rect.shrink(6.0 * s);
     let cx = inner.center().x;
     let cy = inner.center().y;
+    let col = |c: Color32| with_alpha(c, ((c.a() as u32 * alpha as u32) / 255) as u8);
     let is_nv = wl == 637;
     let accent = if is_nv { ACCENT_ORANGE } else { ACCENT_RED };
     let bg = if is_nv { Color32::from_rgb(48, 28, 16) } else { Color32::from_rgb(48, 20, 28) };
-    p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), bg);
-    p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, accent), StrokeKind::Inside);
+    p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(bg));
+    p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(accent)), StrokeKind::Inside);
     let elec_col = if is_nv { Color32::from_rgb(175, 110, 65) } else { Color32::from_rgb(160, 80, 95) };
     for (dx, dy) in [(-14.0f32, -14.0f32), (14.0, -14.0), (-14.0, 10.0), (14.0, 10.0)] {
-        p.circle_filled(Pos2::new(cx + dx * s, cy + dy * s), 4.0 * s, elec_col);
+        p.circle_filled(Pos2::new(cx + dx * s, cy + dy * s), 4.0 * s, col(elec_col));
     }
     let (ddx, ddy) = dir.vec();
     let tip = Pos2::new(cx + ddx as f32 * 28.0 * s, cy - 2.0 * s + ddy as f32 * 24.0 * s);
     let (px, py) = (-ddy as f32, ddx as f32);
     let b1 = Pos2::new(tip.x + (-ddx as f32 * 6.0 + px * 4.0) * s, tip.y + (-ddy as f32 * 6.0 + py * 4.0) * s);
     let b2 = Pos2::new(tip.x + (-ddx as f32 * 6.0 - px * 4.0) * s, tip.y + (-ddy as f32 * 6.0 - py * 4.0) * s);
-    p.add(egui::Shape::convex_polygon(vec![tip, b1, b2], accent, Stroke::NONE));
-    draw_radial_glow(p, Pos2::new(cx, cy - 2.0 * s), 25.0 * s, accent, 140);
+    p.add(egui::Shape::convex_polygon(vec![tip, b1, b2], col(accent), Stroke::NONE));
+    if alpha >= 200 {
+        draw_radial_glow(p, Pos2::new(cx, cy - 2.0 * s), 25.0 * s, accent, 140);
+    }
     let pulse = (4.0 + 1.5 * (frame as f32 * 0.12).sin()) * s;
     let core = if is_nv { Color32::from_rgb(255, 225, 195) } else { Color32::from_rgb(255, 210, 220) };
-    p.circle_filled(Pos2::new(cx, cy - 2.0 * s), pulse, core);
+    p.circle_filled(Pos2::new(cx, cy - 2.0 * s), pulse, col(core));
     let tag = if is_qkd_tx {
         "QKD TX +".to_string()
     } else if is_nv {
@@ -260,14 +277,15 @@ fn draw_emitter(p: &Painter, rect: Rect, label: char, dir: Dir, wl: u32, is_qkd_
     } else {
         format!("ION {label} 780")
     };
-    p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, tag, FontId::proportional((10.0 * s).max(8.0)), accent);
+    p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, tag, FontId::proportional((10.0 * s).max(8.0)), col(accent));
 }
 
-fn draw_target(p: &Painter, rect: Rect, mode: TargetMode, label_override: Option<&str>, complete: bool) {
+fn draw_target(p: &Painter, rect: Rect, mode: TargetMode, label_override: Option<&str>, complete: bool, alpha: u8) {
     let s = rect.width() / TILE_SIZE;
     let inner = rect.shrink(6.0 * s);
     let cx = inner.center().x;
     let cy = inner.center().y;
+    let col = |c: Color32| with_alpha(c, ((c.a() as u32 * alpha as u32) / 255) as u8);
     let is_qkd = mode.is_qkd();
     let border = if complete {
         ACCENT_GREEN
@@ -285,36 +303,36 @@ fn draw_target(p: &Painter, rect: Rect, mode: TargetMode, label_override: Option
     } else {
         Color32::from_rgb(16, 38, 48)
     };
-    p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), bg);
-    p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, border), StrokeKind::Inside);
+    p.rect_filled(inner, CornerRadius::same((8.0 * s) as u8), col(bg));
+    p.rect_stroke(inner, CornerRadius::same((8.0 * s) as u8), Stroke::new(2.0 * s, col(border)), StrokeKind::Inside);
     let font_tile = FontId::proportional((10.0 * s).max(8.0));
 
     if is_qkd {
         let pbs = Rect::from_min_size(Pos2::new(cx - 15.0 * s, cy - 22.0 * s), Vec2::new(30.0 * s, 30.0 * s));
-        p.rect_filled(pbs, CornerRadius::same((4.0 * s) as u8), Color32::from_rgb(24, 68, 66));
-        p.rect_stroke(pbs, CornerRadius::same((4.0 * s) as u8), Stroke::new(2.0 * s, border), StrokeKind::Inside);
+        p.rect_filled(pbs, CornerRadius::same((4.0 * s) as u8), col(Color32::from_rgb(24, 68, 66)));
+        p.rect_stroke(pbs, CornerRadius::same((4.0 * s) as u8), Stroke::new(2.0 * s, col(border)), StrokeKind::Inside);
         let c = pbs.center();
-        p.line_segment([Pos2::new(c.x - 8.0 * s, c.y), Pos2::new(c.x + 8.0 * s, c.y)], Stroke::new(2.0 * s, Color32::from_rgb(200, 255, 245)));
-        p.line_segment([Pos2::new(c.x, c.y - 8.0 * s), Pos2::new(c.x, c.y + 8.0 * s)], Stroke::new(2.0 * s, Color32::from_rgb(200, 255, 245)));
-        p.line_segment([Pos2::new(c.x - 6.0 * s, c.y - 6.0 * s), Pos2::new(c.x + 6.0 * s, c.y + 6.0 * s)], Stroke::new(1.2 * s, ACCENT_PURPLE));
-        p.line_segment([Pos2::new(c.x - 6.0 * s, c.y + 6.0 * s), Pos2::new(c.x + 6.0 * s, c.y - 6.0 * s)], Stroke::new(1.2 * s, ACCENT_PURPLE));
-        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, label_override.unwrap_or("BOB RX"), font_tile, border);
+        p.line_segment([Pos2::new(c.x - 8.0 * s, c.y), Pos2::new(c.x + 8.0 * s, c.y)], Stroke::new(2.0 * s, col(Color32::from_rgb(200, 255, 245))));
+        p.line_segment([Pos2::new(c.x, c.y - 8.0 * s), Pos2::new(c.x, c.y + 8.0 * s)], Stroke::new(2.0 * s, col(Color32::from_rgb(200, 255, 245))));
+        p.line_segment([Pos2::new(c.x - 6.0 * s, c.y - 6.0 * s), Pos2::new(c.x + 6.0 * s, c.y + 6.0 * s)], Stroke::new(1.2 * s, col(ACCENT_PURPLE)));
+        p.line_segment([Pos2::new(c.x - 6.0 * s, c.y + 6.0 * s), Pos2::new(c.x + 6.0 * s, c.y - 6.0 * s)], Stroke::new(1.2 * s, col(ACCENT_PURPLE)));
+        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, label_override.unwrap_or("BOB RX"), font_tile, col(border));
     } else if mode == TargetMode::Bsm {
         let cube = Rect::from_min_size(Pos2::new(cx - 16.0 * s, cy - 22.0 * s), Vec2::new(32.0 * s, 32.0 * s));
-        p.rect_filled(cube, 0.0, Color32::from_rgb(35, 85, 115));
-        p.rect_stroke(cube, 0.0, Stroke::new(2.0 * s, ACCENT_CYAN), StrokeKind::Inside);
-        p.line_segment([cube.left_bottom(), cube.right_top()], Stroke::new(2.0 * s, Color32::from_rgb(200, 245, 255)));
-        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "BSM 50:50", font_tile, ACCENT_AMBER);
+        p.rect_filled(cube, 0.0, col(Color32::from_rgb(35, 85, 115)));
+        p.rect_stroke(cube, 0.0, Stroke::new(2.0 * s, col(ACCENT_CYAN)), StrokeKind::Inside);
+        p.line_segment([cube.left_bottom(), cube.right_top()], Stroke::new(2.0 * s, col(Color32::from_rgb(200, 245, 255))));
+        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "BSM 50:50", font_tile, col(ACCENT_AMBER));
     } else if mode == TargetMode::Qpu {
         let chip = Rect::from_min_size(Pos2::new(cx - 14.0 * s, cy - 20.0 * s), Vec2::new(28.0 * s, 28.0 * s));
-        p.rect_filled(chip, CornerRadius::same((4.0 * s) as u8), Color32::from_rgb(48, 36, 86));
-        p.rect_stroke(chip, CornerRadius::same((4.0 * s) as u8), Stroke::new(2.0 * s, border), StrokeKind::Inside);
+        p.rect_filled(chip, CornerRadius::same((4.0 * s) as u8), col(Color32::from_rgb(48, 36, 86)));
+        p.rect_stroke(chip, CornerRadius::same((4.0 * s) as u8), Stroke::new(2.0 * s, col(border)), StrokeKind::Inside);
         for dx in [-6.0f32, 6.0] {
             for dy in [-6.0f32, 6.0] {
-                p.circle_filled(Pos2::new(chip.center().x + dx * s, chip.center().y + dy * s), 3.0 * s, Color32::from_rgb(220, 200, 255));
+                p.circle_filled(Pos2::new(chip.center().x + dx * s, chip.center().y + dy * s), 3.0 * s, col(Color32::from_rgb(220, 200, 255)));
             }
         }
-        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "QPU >=90%", font_tile, ACCENT_PURPLE);
+        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "QPU >=90%", font_tile, col(ACCENT_PURPLE));
     } else {
         let pts = vec![
             Pos2::new(cx - 16.0 * s, cy - 18.0 * s),
@@ -326,8 +344,8 @@ fn draw_target(p: &Painter, rect: Rect, mode: TargetMode, label_override: Option
             Pos2::new(cx + 16.0 * s, cy + 3.0 * s),
             Pos2::new(cx - 16.0 * s, cy + 3.0 * s),
         ];
-        p.add(egui::Shape::line(pts, Stroke::new(2.0 * s, border)));
-        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "SNSPD 1.5K", font_tile, ACCENT_CYAN);
+        p.add(egui::Shape::line(pts, Stroke::new(2.0 * s, col(border))));
+        p.text(Pos2::new(cx, inner.bottom() - 9.0 * s), Align2::CENTER_CENTER, "SNSPD 1.5K", font_tile, col(ACCENT_CYAN));
     }
 }
 
@@ -392,30 +410,50 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
             sim.remove_component(hgx, hgy);
         }
 
-        let lvl = sim.current_level();
-        if !sim.grid.contains_key(&(hgx, hgy)) && !lvl.is_emitter((hgx, hgy)) && !lvl.is_target((hgx, hgy)) {
-            if let Some(sel) = sim.selected {
-                if sim.inventory.get(&sel).copied().unwrap_or(0) > 0 {
-                    let tr = tile_rect(hgx, hgy);
-                    draw_tile_schematic(&p, tr, Tile::Placeable(sel), sim.frame, 115);
-                    let m = 3.0 * scale;
-                    let arm = 10.0 * scale;
-                    for (cx0, cy0, dx, dy) in [
-                        (tr.left() + m, tr.top() + m, arm, arm),
-                        (tr.right() - m, tr.top() + m, -arm, arm),
-                        (tr.left() + m, tr.bottom() - m, arm, -arm),
-                        (tr.right() - m, tr.bottom() - m, -arm, -arm),
-                    ] {
-                        p.line_segment([Pos2::new(cx0, cy0), Pos2::new(cx0 + dx, cy0)], Stroke::new(1.2_f32, ACCENT_CYAN));
-                        p.line_segment([Pos2::new(cx0, cy0), Pos2::new(cx0, cy0 + dy)], Stroke::new(1.2_f32, ACCENT_CYAN));
+        let tr = tile_rect(hgx, hgy);
+        let draw_reticle = |p: &Painter, reticle_col: Color32| {
+            let m = 3.0 * scale;
+            let arm = 10.0 * scale;
+            for (cx0, cy0, dx, dy) in [
+                (tr.left() + m, tr.top() + m, arm, arm),
+                (tr.right() - m, tr.top() + m, -arm, arm),
+                (tr.left() + m, tr.bottom() - m, arm, -arm),
+                (tr.right() - m, tr.bottom() - m, -arm, -arm),
+            ] {
+                p.line_segment([Pos2::new(cx0, cy0), Pos2::new(cx0 + dx, cy0)], Stroke::new(1.2_f32, reticle_col));
+                p.line_segment([Pos2::new(cx0, cy0), Pos2::new(cx0, cy0 + dy)], Stroke::new(1.2_f32, reticle_col));
+            }
+            p.text(
+                Pos2::new(tr.left() + 6.0 * scale, tr.top() + 5.0 * scale),
+                Align2::LEFT_TOP,
+                format!("{hgx},{hgy}"),
+                FontId::proportional((10.0 * scale).max(8.0)),
+                Color32::from_rgb(90, 130, 160),
+            );
+        };
+
+        if sim.sandbox_mode {
+            match sim.sandbox_tool {
+                SandboxTool::Tile(t) => draw_tile_schematic(&p, tr, t, sim.frame, 115),
+                SandboxTool::EmitterIon => draw_emitter(&p, tr, '+', sim.sandbox_dir, 780, false, sim.frame, 120),
+                SandboxTool::EmitterNv => draw_emitter(&p, tr, '+', sim.sandbox_dir, 637, false, sim.frame, 120),
+                SandboxTool::EprSource => draw_epr_source(&p, tr, matches!(sim.sandbox_dir, Dir::Up | Dir::Down), sim.frame, 120),
+                SandboxTool::DetectorSnspd => draw_target(&p, tr, TargetMode::Single, None, false, 120),
+                SandboxTool::DetectorBsm => draw_target(&p, tr, TargetMode::Bsm, None, false, 120),
+                SandboxTool::DetectorQpu => draw_target(&p, tr, TargetMode::Qpu, None, false, 120),
+                SandboxTool::DetectorBobBb84 => draw_target(&p, tr, TargetMode::QkdBb84, Some("BOB RX"), false, 120),
+                SandboxTool::DetectorAliceE91 => draw_target(&p, tr, TargetMode::QkdE91, Some("ALICE RX"), false, 120),
+                SandboxTool::DetectorBobE91 => draw_target(&p, tr, TargetMode::QkdE91, Some("BOB RX"), false, 120),
+            }
+            draw_reticle(&p, ACCENT_PURPLE);
+        } else {
+            let lvl = sim.current_level();
+            if !sim.grid.contains_key(&(hgx, hgy)) && !lvl.is_emitter((hgx, hgy)) && !lvl.is_target((hgx, hgy)) {
+                if let Some(sel) = sim.selected {
+                    if sim.inventory.get(&sel).copied().unwrap_or(0) > 0 {
+                        draw_tile_schematic(&p, tr, Tile::Placeable(sel), sim.frame, 115);
+                        draw_reticle(&p, ACCENT_CYAN);
                     }
-                    p.text(
-                        Pos2::new(tr.left() + 6.0 * scale, tr.top() + 5.0 * scale),
-                        Align2::LEFT_TOP,
-                        format!("{hgx},{hgy}"),
-                        FontId::proportional((10.0 * scale).max(8.0)),
-                        Color32::from_rgb(90, 130, 160),
-                    );
                 }
             }
         }
@@ -424,19 +462,27 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) {
     // 4. Emitters & Target(s)
     let lvl = sim.current_level();
     if let Some((sx, sy)) = lvl.epr_source {
-        draw_epr_source(&p, tile_rect(sx, sy), sim.frame);
+        let vert = lvl.emitters.first().map(|e| matches!(e.dir, Dir::Up | Dir::Down)).unwrap_or(false);
+        draw_epr_source(&p, tile_rect(sx, sy), vert, sim.frame, 255);
     } else {
         for (i, e) in lvl.emitters.iter().enumerate() {
             let lbl = (b'A' + i as u8) as char;
-            draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, lvl.mode == TargetMode::QkdBb84, sim.frame);
+            draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, lvl.mode == TargetMode::QkdBb84, sim.frame, 255);
         }
     }
     if let Some((a_pos, b_pos)) = lvl.e91_targets {
-        draw_target(&p, tile_rect(a_pos.0, a_pos.1), lvl.mode, Some("ALICE RX"), sim.level_complete);
-        draw_target(&p, tile_rect(b_pos.0, b_pos.1), lvl.mode, Some("BOB RX"), sim.level_complete);
-    } else {
+        draw_target(&p, tile_rect(a_pos.0, a_pos.1), lvl.mode, Some("ALICE RX"), sim.level_complete, 255);
+        draw_target(&p, tile_rect(b_pos.0, b_pos.1), lvl.mode, Some("BOB RX"), sim.level_complete, 255);
+    } else if sim.sandbox_mode && lvl.mode == TargetMode::QkdE91 {
+        if let Some((ax, ay)) = sim.sandbox_bp.e91_alice {
+            draw_target(&p, tile_rect(ax, ay), TargetMode::QkdE91, Some("ALICE RX"), sim.level_complete, 255);
+        }
+        if let Some((bx, by)) = sim.sandbox_bp.e91_bob {
+            draw_target(&p, tile_rect(bx, by), TargetMode::QkdE91, Some("BOB RX"), sim.level_complete, 255);
+        }
+    } else if lvl.target.0 >= 0 && lvl.target.1 >= 0 {
         let lbl = if lvl.mode == TargetMode::QkdBb84 { Some("BOB RX") } else { None };
-        draw_target(&p, tile_rect(lvl.target.0, lvl.target.1), lvl.mode, lbl, sim.level_complete);
+        draw_target(&p, tile_rect(lvl.target.0, lvl.target.1), lvl.mode, lbl, sim.level_complete, 255);
     }
 
     // 5. Photons & tapered laser trails

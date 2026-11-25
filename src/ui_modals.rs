@@ -29,6 +29,7 @@ fn tile_for_doc_key(key: &str) -> Option<Tile> {
         "ATMOS" => Some(Tile::Atmos),
         "DISTILL" => Some(Tile::Distill),
         "EVE" => Some(Tile::Eve),
+        "WALL" => Some(Tile::Wall),
         _ => None,
     }
 }
@@ -313,6 +314,144 @@ pub fn draw_modal_overlay(
                 }
                 sim.pending_sfx.push(SfxEvent::Select);
             }
+            if close {
+                *overlay = Overlay::None;
+                sim.pending_sfx.push(SfxEvent::Select);
+            }
+        }
+        Overlay::SandboxShare => {
+            let mut close = false;
+            let cur_campaign_lvl = sim.levels[sim.level_idx].clone();
+            let cur_campaign_num = sim.level_idx + 1;
+            egui::Window::new("sandbox_blueprints")
+                .title_bar(false)
+                .resizable(false)
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .min_width(720.0f32.min(screen.width() - 32.0))
+                .max_width(720.0f32.min(screen.width() - 32.0))
+                .frame(modal_frame(ACCENT_PURPLE))
+                .show(ctx, |ui| {
+                    ui.label(RichText::new("FREE-BUILD SANDBOX  •  STARTER LABS & JSON BLUEPRINTS").strong().size(11.0).color(ACCENT_PURPLE));
+                    ui.label(RichText::new("Load a Starter Optical Bench or Share / Import JSON").strong().size(17.5).color(TEXT_WHITE));
+                    ui.separator();
+                    ui.add_space(6.0);
+
+                    // Bench Name input
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("BENCH NAME:").strong().size(11.0).color(TEXT_MUTED));
+                        let name_resp = ui.add(
+                            egui::TextEdit::singleline(&mut sim.sandbox_bp.name)
+                                .desired_width(280.0)
+                                .char_limit(48),
+                        );
+                        if name_resp.changed() {
+                            sim.sandbox_json_buf = serde_json::to_string_pretty(&sim.sandbox_bp).unwrap_or_default();
+                        }
+                    });
+                    ui.add_space(8.0);
+
+                    // Starter Presets Row
+                    ui.label(RichText::new("QUICK-LOAD STARTER TEMPLATES").strong().size(11.0).color(ACCENT_CYAN));
+                    ui.add_space(3.0);
+                    ui.horizontal_wrapped(|ui| {
+                        let presets: [(&str, Color32, SandboxBlueprint); 4] = [
+                            ("Starter (ION + SNSPD)", ACCENT_CYAN, SandboxBlueprint::preset_blank()),
+                            ("HOM Interferometer Lab", ACCENT_AMBER, SandboxBlueprint::preset_hom_lab()),
+                            ("E91 QKD & Eve Lab", ACCENT_PURPLE, SandboxBlueprint::preset_qkd_lab()),
+                            (&format!("Clone Level {cur_campaign_num}"), ACCENT_GREEN, SandboxBlueprint::from_level(&cur_campaign_lvl)),
+                        ];
+                        for (lbl, col, bp) in presets {
+                            let btn = egui::Button::new(RichText::new(lbl).strong().size(11.5).color(col))
+                                .fill(Color32::from_rgb(20, 28, 42))
+                                .stroke(Stroke::new(1.0_f32, col))
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(150.0, 30.0));
+                            if ui.add(btn).clicked() {
+                                let _ = sim.load_sandbox_blueprint(bp);
+                                sim.refresh_sandbox_json();
+                                sim.sandbox_json_msg = Some(("Template loaded onto optical bench!".to_string(), ACCENT_GREEN));
+                                sim.pending_sfx.push(SfxEvent::Select);
+                            }
+                        }
+                    });
+
+                    ui.add_space(10.0);
+                    ui.label(RichText::new("PORTABLE JSON BLUEPRINT (COPY TO SHARE OR PASTE TO IMPORT)").strong().size(11.0).color(ACCENT_AMBER));
+                    ui.add_space(3.0);
+
+                    egui::ScrollArea::vertical().max_height(190.0).show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut sim.sandbox_json_buf)
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(10),
+                        );
+                    });
+
+                    if let Some((msg, col)) = &sim.sandbox_json_msg {
+                        ui.add_space(4.0);
+                        ui.label(RichText::new(msg).size(12.0).color(*col));
+                    }
+
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        let copy_btn = egui::Button::new(RichText::new("COPY JSON").strong().size(12.5).color(ACCENT_CYAN))
+                            .fill(PANEL_BG)
+                            .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                            .min_size(Vec2::new(115.0, 34.0));
+                        if ui.add(copy_btn).clicked() {
+                            sim.sandbox_json_buf = serde_json::to_string_pretty(&sim.sandbox_bp).unwrap_or_default();
+                            ctx.copy_text(sim.sandbox_json_buf.clone());
+                            sim.sandbox_json_msg = Some(("Copied blueprint JSON to clipboard!".to_string(), ACCENT_CYAN));
+                            sim.pending_sfx.push(SfxEvent::Select);
+                        }
+
+                        let load_btn = egui::Button::new(RichText::new("LOAD FROM JSON").strong().size(12.5).color(BG_DARK))
+                            .fill(ACCENT_GREEN)
+                            .min_size(Vec2::new(145.0, 34.0));
+                        if ui.add(load_btn).clicked() {
+                            match serde_json::from_str::<SandboxBlueprint>(&sim.sandbox_json_buf) {
+                                Ok(bp) => match sim.load_sandbox_blueprint(bp) {
+                                    Ok(()) => {
+                                        sim.refresh_sandbox_json();
+                                        sim.sandbox_json_msg = Some(("Blueprint imported successfully!".to_string(), ACCENT_GREEN));
+                                        sim.pending_sfx.push(SfxEvent::Place);
+                                    }
+                                    Err(err) => {
+                                        sim.sandbox_json_msg = Some((format!("Invalid blueprint: {err}"), ACCENT_RED));
+                                        sim.pending_sfx.push(SfxEvent::Fail);
+                                    }
+                                },
+                                Err(err) => {
+                                    sim.sandbox_json_msg = Some((format!("JSON parse error: {err}"), ACCENT_RED));
+                                    sim.pending_sfx.push(SfxEvent::Fail);
+                                }
+                            }
+                        }
+
+                        let clr_btn = egui::Button::new(RichText::new("BLANK GRID").strong().size(12.5).color(ACCENT_RED))
+                            .fill(Color32::from_rgb(44, 20, 26))
+                            .stroke(Stroke::new(1.0_f32, ACCENT_RED))
+                            .min_size(Vec2::new(110.0, 34.0));
+                        if ui.add(clr_btn).clicked() {
+                            sim.clear_sandbox();
+                            sim.refresh_sandbox_json();
+                            sim.sandbox_json_msg = Some(("Cleared breadboard to empty grid.".to_string(), ACCENT_AMBER));
+                            sim.pending_sfx.push(SfxEvent::Remove);
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let done_btn = egui::Button::new(RichText::new("DONE  [ESC]").strong().size(12.5).color(TEXT_WHITE))
+                                .fill(PANEL_BG)
+                                .stroke(Stroke::new(1.0_f32, ACCENT_PURPLE))
+                                .min_size(Vec2::new(115.0, 34.0));
+                            if ui.add(done_btn).clicked() {
+                                close = true;
+                            }
+                        });
+                    });
+                });
             if close {
                 *overlay = Overlay::None;
                 sim.pending_sfx.push(SfxEvent::Select);

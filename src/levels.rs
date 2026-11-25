@@ -188,6 +188,22 @@ pub const HARDWARE_DOCS: &[HardwareDoc] = &[
         rule: "Requires >= 12 sifted bits and QBER <= 11% (plus CHSH S > 2.0 for E91) to derive a live 256-bit AES-CTR key.",
         tip: "Press [K] or click INSPECT AES-256 to view the derived 256-bit key and encrypt custom messages!",
     },
+    HardwareDoc {
+        key: "ION",
+        title: "Trapped-Ion Quantum Emitter (780nm)",
+        color: ACCENT_RED,
+        physics: "Laser-cooled rubidium/barium trapped-ion qubit emitting single visible 780nm photons at 100% fidelity and '+' rectilinear polarization.",
+        rule: "Emits 780nm photon; QFC shifts 780nm -> 1550nm with +40 Raman noise (needs 1 VBG Filter).",
+        tip: "In Sandbox Mode, press Q/E or click an existing emitter to rotate its firing direction.",
+    },
+    HardwareDoc {
+        key: "WALL",
+        title: "Cryostat Radiation Shield (Wall)",
+        color: egui::Color32::from_rgb(130, 148, 175),
+        physics: "Opaque cryogenic vacuum chamber wall or optical baffle blocking free-space photon trajectories on a crowded optical table.",
+        rule: "Absorbs any photon colliding with the tile immediately.",
+        tip: "Use 45° dielectric mirrors (/) and (\\) to steer quantum beams cleanly around shielding.",
+    },
 ];
 
 pub fn build_levels() -> Vec<LevelDef> {

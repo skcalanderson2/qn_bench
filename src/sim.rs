@@ -161,6 +161,14 @@ impl Photon {
 pub struct BenchSim {
     pub levels: Vec<LevelDef>,
     pub level_idx: usize,
+    pub sandbox_mode: bool,
+    pub sandbox_bp: SandboxBlueprint,
+    pub sandbox_level: LevelDef,
+    pub sandbox_tab: SandboxTab,
+    pub sandbox_tool: SandboxTool,
+    pub sandbox_dir: Dir,
+    pub sandbox_json_buf: String,
+    pub sandbox_json_msg: Option<(String, Color32)>,
     pub grid: HashMap<(i32, i32), Tile>,
     pub user_placed: HashSet<(i32, i32)>,
     pub inventory: BTreeMap<Placeable, u32>,
@@ -194,9 +202,19 @@ pub struct BenchSim {
 impl BenchSim {
     pub fn new() -> Self {
         let levels = build_levels();
+        let sandbox_bp = SandboxBlueprint::preset_blank();
+        let sandbox_level = sandbox_bp.to_level_def();
         let mut s = Self {
             levels,
             level_idx: 0,
+            sandbox_mode: false,
+            sandbox_bp,
+            sandbox_level,
+            sandbox_tab: SandboxTab::Optics,
+            sandbox_tool: SandboxTool::Tile(Tile::Placeable(Placeable::Qfc)),
+            sandbox_dir: Dir::Right,
+            sandbox_json_buf: String::new(),
+            sandbox_json_msg: None,
             grid: HashMap::new(),
             user_placed: HashSet::new(),
             inventory: BTreeMap::new(),
@@ -231,11 +249,273 @@ impl BenchSim {
     }
 
     pub fn current_level(&self) -> &LevelDef {
-        &self.levels[self.level_idx]
+        if self.sandbox_mode {
+            &self.sandbox_level
+        } else {
+            &self.levels[self.level_idx]
+        }
     }
 
     pub fn is_qkd_level(&self) -> bool {
         self.current_level().mode.is_qkd()
+    }
+
+    pub fn enter_sandbox(&mut self) {
+        self.sandbox_mode = true;
+        self.sync_sandbox_from_bp();
+    }
+
+    pub fn exit_sandbox(&mut self, idx: usize) {
+        self.sandbox_mode = false;
+        self.load_level(idx);
+    }
+
+    pub fn load_sandbox_blueprint(&mut self, bp: SandboxBlueprint) -> Result<(), String> {
+        bp.validate()?;
+        self.sandbox_bp = bp;
+        if self.sandbox_mode {
+            self.sync_sandbox_from_bp();
+        } else {
+            self.sandbox_level = self.sandbox_bp.to_level_def();
+        }
+        Ok(())
+    }
+
+    pub fn clear_sandbox(&mut self) {
+        self.sandbox_bp = SandboxBlueprint {
+            version: 1,
+            name: "Blank Breadboard".to_string(),
+            mode: TargetMode::Single,
+            epr_source: None,
+            emitters: Vec::new(),
+            target: None,
+            e91_alice: None,
+            e91_bob: None,
+            tiles: Vec::new(),
+        };
+        self.sync_sandbox_from_bp();
+        self.status_msg = "Bench cleared. Add emitters, optics, channels, and detectors from the sidebar!".to_string();
+        self.status_color = ACCENT_CYAN;
+    }
+
+    pub fn rotate_sandbox_dir(&mut self, clockwise: bool) {
+        self.sandbox_dir = if clockwise {
+            self.sandbox_dir.rotate_cw()
+        } else {
+            self.sandbox_dir.rotate_cw().rotate_cw().rotate_cw()
+        };
+    }
+
+    pub fn refresh_sandbox_json(&mut self) {
+        self.sandbox_json_buf = serde_json::to_string_pretty(&self.sandbox_bp).unwrap_or_default();
+        self.sandbox_json_msg = None;
+    }
+
+    pub fn sync_sandbox_from_bp(&mut self) {
+        self.sandbox_level = self.sandbox_bp.to_level_def();
+        self.grid.clear();
+        self.user_placed.clear();
+        for &(x, y, tile) in &self.sandbox_bp.tiles {
+            self.grid.insert((x, y), tile);
+            self.user_placed.insert((x, y));
+        }
+        self.photons.clear();
+        self.particles.clear();
+        self.shockwaves.clear();
+        self.tick = 0;
+        self.hom_delta_ps = None;
+        self.hom_signed_ps = None;
+        self.pol_mismatch = false;
+        self.distill_fired = false;
+        self.qkd_burst_remaining = 0;
+        self.qkd_burst_idx = 0;
+        self.qkd_last_drop_msg = None;
+        self.qkd_session = if self.sandbox_level.mode.is_qkd() {
+            Some(QkdSession::new(self.sandbox_level.mode, &self.qkd_plaintext))
+        } else {
+            None
+        };
+        self.sim_state = SimState::Ready;
+        self.status_msg = self.sandbox_level.goal.to_string();
+        self.status_color = TEXT_WHITE;
+        self.level_complete = false;
+        self.sim_active = false;
+        self.paused = false;
+    }
+
+    fn clear_sandbox_cell(&mut self, pos: (i32, i32)) -> bool {
+        let mut changed = false;
+        let prev_tiles = self.sandbox_bp.tiles.len();
+        self.sandbox_bp.tiles.retain(|&(x, y, _)| (x, y) != pos);
+        if self.sandbox_bp.tiles.len() != prev_tiles {
+            changed = true;
+        }
+        if self.sandbox_bp.epr_source == Some(pos) {
+            self.sandbox_bp.epr_source = None;
+            self.sandbox_bp.emitters.clear();
+            changed = true;
+        } else {
+            let prev_em = self.sandbox_bp.emitters.len();
+            self.sandbox_bp.emitters.retain(|e| (e.gx, e.gy) != pos);
+            if self.sandbox_bp.emitters.len() != prev_em {
+                changed = true;
+            }
+        }
+        if self.sandbox_bp.target == Some(pos) {
+            self.sandbox_bp.target = None;
+            changed = true;
+        }
+        if self.sandbox_bp.e91_alice == Some(pos) {
+            self.sandbox_bp.e91_alice = None;
+            changed = true;
+        }
+        if self.sandbox_bp.e91_bob == Some(pos) {
+            self.sandbox_bp.e91_bob = None;
+            changed = true;
+        }
+        changed
+    }
+
+    pub fn sandbox_place(&mut self, gx: i32, gy: i32) -> bool {
+        if gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS {
+            return false;
+        }
+        let pos = (gx, gy);
+
+        // Clicking an existing emitter with an emitter tool rotates it in place!
+        if self.sandbox_tool == SandboxTool::EprSource && self.sandbox_bp.epr_source == Some(pos) {
+            let currently_horiz = self
+                .sandbox_bp
+                .emitters
+                .first()
+                .map(|e| matches!(e.dir, Dir::Left | Dir::Right))
+                .unwrap_or(true);
+            let (d1, d2) = if currently_horiz {
+                (Dir::Up, Dir::Down)
+            } else {
+                (Dir::Left, Dir::Right)
+            };
+            self.sandbox_bp.emitters = vec![
+                EmitterDef { gx, gy, dir: d1, wavelength: 780 },
+                EmitterDef { gx, gy, dir: d2, wavelength: 780 },
+            ];
+            self.sync_sandbox_from_bp();
+            self.pending_sfx.push(SfxEvent::Place);
+            return true;
+        }
+        if matches!(self.sandbox_tool, SandboxTool::EmitterIon | SandboxTool::EmitterNv) {
+            if let Some(em) = self.sandbox_bp.emitters.iter_mut().find(|e| (e.gx, e.gy) == pos) {
+                if self.sandbox_bp.epr_source.is_none() {
+                    let want_wl = if self.sandbox_tool == SandboxTool::EmitterNv { 637 } else { 780 };
+                    if em.wavelength == want_wl {
+                        em.dir = em.dir.rotate_cw();
+                        self.sandbox_dir = em.dir;
+                        self.sync_sandbox_from_bp();
+                        self.pending_sfx.push(SfxEvent::Place);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Clear anything previously occupying this cell so overwriting is seamless
+        self.clear_sandbox_cell(pos);
+
+        match self.sandbox_tool {
+            SandboxTool::Tile(t) => {
+                self.sandbox_bp.tiles.push((gx, gy, t));
+            }
+            SandboxTool::EmitterIon | SandboxTool::EmitterNv => {
+                let wl = if self.sandbox_tool == SandboxTool::EmitterNv { 637 } else { 780 };
+                if self.sandbox_bp.epr_source.is_some() {
+                    self.sandbox_bp.epr_source = None;
+                    self.sandbox_bp.emitters.clear();
+                    if self.sandbox_bp.mode == TargetMode::QkdE91 {
+                        self.sandbox_bp.mode = TargetMode::Single;
+                        self.sandbox_bp.e91_alice = None;
+                        self.sandbox_bp.e91_bob = None;
+                    }
+                }
+                if self.sandbox_bp.emitters.len() >= 4 {
+                    self.sandbox_bp.emitters.remove(0);
+                }
+                self.sandbox_bp.emitters.push(EmitterDef {
+                    gx,
+                    gy,
+                    dir: self.sandbox_dir,
+                    wavelength: wl,
+                });
+            }
+            SandboxTool::EprSource => {
+                self.sandbox_bp.mode = TargetMode::QkdE91;
+                self.sandbox_bp.epr_source = Some(pos);
+                self.sandbox_bp.target = None;
+                let (d1, d2) = if matches!(self.sandbox_dir, Dir::Up | Dir::Down) {
+                    (Dir::Up, Dir::Down)
+                } else {
+                    (Dir::Left, Dir::Right)
+                };
+                self.sandbox_bp.emitters = vec![
+                    EmitterDef { gx, gy, dir: d1, wavelength: 780 },
+                    EmitterDef { gx, gy, dir: d2, wavelength: 780 },
+                ];
+            }
+            SandboxTool::DetectorSnspd => {
+                self.sandbox_bp.mode = TargetMode::Single;
+                self.sandbox_bp.target = Some(pos);
+                self.sandbox_bp.e91_alice = None;
+                self.sandbox_bp.e91_bob = None;
+                self.sandbox_bp.epr_source = None;
+            }
+            SandboxTool::DetectorBsm => {
+                self.sandbox_bp.mode = TargetMode::Bsm;
+                self.sandbox_bp.target = Some(pos);
+                self.sandbox_bp.e91_alice = None;
+                self.sandbox_bp.e91_bob = None;
+                self.sandbox_bp.epr_source = None;
+            }
+            SandboxTool::DetectorQpu => {
+                self.sandbox_bp.mode = TargetMode::Qpu;
+                self.sandbox_bp.target = Some(pos);
+                self.sandbox_bp.e91_alice = None;
+                self.sandbox_bp.e91_bob = None;
+                self.sandbox_bp.epr_source = None;
+            }
+            SandboxTool::DetectorBobBb84 => {
+                self.sandbox_bp.mode = TargetMode::QkdBb84;
+                self.sandbox_bp.target = Some(pos);
+                self.sandbox_bp.e91_alice = None;
+                self.sandbox_bp.e91_bob = None;
+                self.sandbox_bp.epr_source = None;
+            }
+            SandboxTool::DetectorAliceE91 => {
+                self.sandbox_bp.mode = TargetMode::QkdE91;
+                self.sandbox_bp.e91_alice = Some(pos);
+                self.sandbox_bp.target = None;
+            }
+            SandboxTool::DetectorBobE91 => {
+                self.sandbox_bp.mode = TargetMode::QkdE91;
+                self.sandbox_bp.e91_bob = Some(pos);
+                self.sandbox_bp.target = None;
+            }
+        }
+
+        self.sync_sandbox_from_bp();
+        self.pending_sfx.push(SfxEvent::Place);
+        true
+    }
+
+    pub fn sandbox_remove(&mut self, gx: i32, gy: i32) -> bool {
+        if gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS {
+            return false;
+        }
+        if self.clear_sandbox_cell((gx, gy)) {
+            self.sync_sandbox_from_bp();
+            self.pending_sfx.push(SfxEvent::Remove);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn active_components(&self) -> Vec<Placeable> {
@@ -258,6 +538,7 @@ impl BenchSim {
     }
 
     pub fn load_level(&mut self, idx: usize) {
+        self.sandbox_mode = false;
         self.level_idx = idx % self.levels.len();
         let lvl = self.levels[self.level_idx].clone();
         self.grid.clear();
@@ -303,6 +584,9 @@ impl BenchSim {
     }
 
     pub fn place_component(&mut self, gx: i32, gy: i32) -> bool {
+        if self.sandbox_mode {
+            return self.sandbox_place(gx, gy);
+        }
         let pos = (gx, gy);
         if gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS {
             return false;
@@ -334,6 +618,9 @@ impl BenchSim {
     }
 
     pub fn remove_component(&mut self, gx: i32, gy: i32) -> bool {
+        if self.sandbox_mode {
+            return self.sandbox_remove(gx, gy);
+        }
         let pos = (gx, gy);
         if !self.user_placed.remove(&pos) {
             return false;
@@ -362,7 +649,7 @@ impl BenchSim {
     }
 
     pub fn fire_photons(&mut self) {
-        let lvl = self.levels[self.level_idx].clone();
+        let lvl = self.current_level().clone();
         self.tick = 0;
         self.hom_delta_ps = None;
         self.hom_signed_ps = None;
@@ -371,6 +658,31 @@ impl BenchSim {
         self.qkd_last_drop_msg = None;
         self.photons.clear();
         self.paused = false;
+
+        if lvl.emitters.is_empty() {
+            self.sim_active = false;
+            self.sim_state = SimState::Fault;
+            self.status_msg = "SANDBOX: Place at least one Quantum Emitter (Sources & RX tab) before firing.".to_string();
+            self.status_color = ACCENT_AMBER;
+            self.pending_sfx.push(SfxEvent::Fail);
+            return;
+        }
+        if lvl.mode == TargetMode::QkdE91 && (lvl.e91_targets.is_none() || lvl.emitters.len() < 2) {
+            self.sim_active = false;
+            self.sim_state = SimState::Fault;
+            self.status_msg = "SANDBOX E91: Place EPR Pair Source plus both ALICE RX and BOB RX before firing.".to_string();
+            self.status_color = ACCENT_AMBER;
+            self.pending_sfx.push(SfxEvent::Fail);
+            return;
+        }
+        if lvl.mode == TargetMode::QkdBb84 && lvl.target.0 < 0 {
+            self.sim_active = false;
+            self.sim_state = SimState::Fault;
+            self.status_msg = "SANDBOX BB84: Place a BOB RX (BB84) detector before firing QKD.".to_string();
+            self.status_color = ACCENT_AMBER;
+            self.pending_sfx.push(SfxEvent::Fail);
+            return;
+        }
 
         if lvl.mode.is_qkd() {
             let mut qs = QkdSession::new(lvl.mode, &self.qkd_plaintext);
@@ -422,7 +734,7 @@ impl BenchSim {
     }
 
     fn spawn_qkd_round(&mut self) {
-        let lvl = self.levels[self.level_idx].clone();
+        let lvl = self.current_level().clone();
         let pair_id = self.qkd_burst_idx;
         self.qkd_burst_idx += 1;
         self.qkd_burst_remaining = self.qkd_burst_remaining.saturating_sub(1);
@@ -480,7 +792,7 @@ impl BenchSim {
 
         if self.sim_active && !self.paused {
             self.tick += 1;
-            let lvl = self.levels[self.level_idx].clone();
+            let lvl = self.current_level().clone();
             let is_qkd = lvl.mode.is_qkd();
 
             if is_qkd && self.qkd_burst_remaining > 0 && self.tick % 4 == 0 {
@@ -940,7 +1252,7 @@ impl BenchSim {
     }
 
     fn evaluate_simulation(&mut self) {
-        let lvl = self.levels[self.level_idx].clone();
+        let lvl = self.current_level().clone();
         if lvl.mode.is_qkd() {
             if self.qkd_burst_remaining > 0 || self.photons.iter().any(|p| p.alive) {
                 return;
@@ -956,7 +1268,9 @@ impl BenchSim {
                 self.status_color = ACCENT_GREEN;
                 self.sim_state = SimState::Locked;
                 self.level_complete = true;
-                self.completed_levels.insert(self.level_idx);
+                if !self.sandbox_mode {
+                    self.completed_levels.insert(self.level_idx);
+                }
                 self.pending_sfx.push(SfxEvent::AesLock);
                 for (tx, ty) in lvl.target_coords() {
                     self.spawn_fx(
@@ -1011,34 +1325,54 @@ impl BenchSim {
             self.status_color = ACCENT_GREEN;
             self.sim_state = SimState::Locked;
             self.level_complete = true;
-            self.completed_levels.insert(self.level_idx);
+            if !self.sandbox_mode {
+                self.completed_levels.insert(self.level_idx);
+            }
             self.pending_sfx.push(SfxEvent::BsmOk);
             self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 26);
             return;
         }
 
-        if !self.photons.iter().all(|p| p.arrived) {
+        if lvl.target.0 < 0 && self.sandbox_mode {
+            self.sim_state = SimState::Ready;
+            self.status_msg = "Beam trace finished (place a detector in Sources & RX to test lock criteria).".to_string();
+            self.status_color = ACCENT_CYAN;
+            return;
+        }
+
+        if self.photons.is_empty() || !self.photons.iter().all(|p| p.arrived) {
             self.sim_state = SimState::Fault;
             return;
         }
 
         match lvl.mode {
             TargetMode::Single => {
-                let p = &self.photons[0];
+                let min_fid = self.photons.iter().map(|p| p.fidelity).min().unwrap_or(0);
+                let max_noise = self.photons.iter().map(|p| p.noise).max().unwrap_or(0);
                 self.status_msg = format!(
-                    "SUCCESS! 1550nm detected | Noise: {} | Fidelity: {}%",
-                    p.noise, p.fidelity
+                    "SUCCESS! 1550nm detected | Noise: {max_noise} | Fidelity: {min_fid}%"
                 );
                 self.status_color = ACCENT_GREEN;
                 self.sim_state = SimState::Locked;
                 self.level_complete = true;
-                self.completed_levels.insert(self.level_idx);
+                if !self.sandbox_mode {
+                    self.completed_levels.insert(self.level_idx);
+                }
                 self.pending_sfx.push(SfxEvent::SnspdOk);
                 self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 20);
             }
             TargetMode::Bsm => {
-                let p_a = &self.photons[0];
-                let p_b = &self.photons[1];
+                let arrived: Vec<&Photon> = self.photons.iter().filter(|p| p.arrived).collect();
+                if arrived.len() < 2 {
+                    self.status_msg = "FAILURE: BSM 50:50 requires 2 photons arriving within <= 15ps.".to_string();
+                    self.status_color = ACCENT_RED;
+                    self.sim_state = SimState::Fault;
+                    self.pending_sfx.push(SfxEvent::Fail);
+                    self.spawn_fx("burst", tcx, tcy, ACCENT_AMBER, 16);
+                    return;
+                }
+                let p_a = arrived[0];
+                let p_b = arrived[1];
                 let t_a = p_a.arrival_tick.unwrap_or(0) as i32;
                 let t_b = p_b.arrival_tick.unwrap_or(0) as i32;
                 let delta_frames = (t_a - t_b).abs();
@@ -1073,7 +1407,9 @@ impl BenchSim {
                     self.status_color = ACCENT_GREEN;
                     self.sim_state = SimState::Locked;
                     self.level_complete = true;
-                    self.completed_levels.insert(self.level_idx);
+                    if !self.sandbox_mode {
+                        self.completed_levels.insert(self.level_idx);
+                    }
                     self.pending_sfx.push(SfxEvent::BsmOk);
                     self.spawn_fx("ring", tcx, tcy, ACCENT_GREEN, 28);
                 }
@@ -1223,5 +1559,95 @@ mod tests {
         );
         assert_eq!(l14_ok.sim_state, SimState::Locked);
         assert!(l14_ok.qkd_session.as_ref().unwrap().chsh_s.unwrap() > 2.8);
+    }
+
+    #[test]
+    fn sandbox_mode_build_rotate_json_and_safety_guards() {
+        let mut sim = BenchSim::new();
+        sim.enter_sandbox();
+        assert!(sim.sandbox_mode);
+
+        // 1. Edge-case safety: empty bench firing never panics
+        sim.clear_sandbox();
+        sim.fire_photons();
+        assert_eq!(sim.sim_state, SimState::Fault);
+        assert!(!sim.sim_active);
+
+        // 2. Build a custom rotated emitter + fiber + QFC + VBG + SNSPD bench from scratch
+        sim.sandbox_tool = SandboxTool::EmitterIon;
+        sim.sandbox_dir = Dir::Right;
+        assert!(sim.place_component(1, 0));
+        // Clicking the same emitter rotates it clockwise (Right -> Down)
+        assert!(sim.place_component(1, 0));
+        assert_eq!(sim.sandbox_bp.emitters[0].dir, Dir::Down);
+
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Placeable(Placeable::Qfc));
+        assert!(sim.place_component(1, 1));
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Placeable(Placeable::Vbg));
+        assert!(sim.place_component(1, 2));
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Fiber);
+        assert!(sim.place_component(1, 3));
+        sim.sandbox_tool = SandboxTool::DetectorSnspd;
+        assert!(sim.place_component(1, 5));
+
+        sim.fire_photons();
+        for _ in 0..400 {
+            sim.step_frame();
+            if !sim.sim_active {
+                break;
+            }
+        }
+        assert_eq!(sim.sim_state, SimState::Locked);
+        // Sandbox solves must never pollute Campaign completion progress
+        assert!(sim.completed_levels.is_empty());
+
+        // 3. JSON Blueprint round-trip & validation
+        let json = serde_json::to_string_pretty(&sim.sandbox_bp).expect("serialize blueprint");
+        let parsed: SandboxBlueprint = serde_json::from_str(&json).expect("deserialize blueprint");
+        assert_eq!(parsed, sim.sandbox_bp);
+        assert!(parsed.validate().is_ok());
+
+        let mut bad = parsed.clone();
+        bad.tiles.push((99, 0, Tile::Fiber));
+        assert!(bad.validate().is_err());
+
+        // 4. BSM with only 1 emitter fails cleanly without panicking
+        sim.sandbox_tool = SandboxTool::DetectorBsm;
+        assert!(sim.place_component(1, 5));
+        sim.fire_photons();
+        for _ in 0..400 {
+            sim.step_frame();
+            if !sim.sim_active {
+                break;
+            }
+        }
+        assert_eq!(sim.sim_state, SimState::Fault);
+
+        // 5. Preset E91 QKD Lab validates and runs cleanly
+        assert!(sim.load_sandbox_blueprint(SandboxBlueprint::preset_qkd_lab()).is_ok());
+        assert_eq!(sim.current_level().mode, TargetMode::QkdE91);
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Placeable(Placeable::Qfc));
+        assert!(sim.place_component(3, 2));
+        assert!(sim.place_component(5, 2));
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Placeable(Placeable::Vbg));
+        assert!(sim.place_component(2, 2));
+        assert!(sim.place_component(6, 2));
+        // Remove Eve tap at (7,2) so E91 locks with AES-256!
+        assert!(sim.remove_component(7, 2));
+        sim.fire_photons();
+        if let Some(qs) = &mut sim.qkd_session {
+            qs.reseed(2026);
+        }
+        for _ in 0..800 {
+            sim.step_frame();
+            if !sim.sim_active {
+                break;
+            }
+        }
+        assert_eq!(sim.sim_state, SimState::Locked);
+        assert_eq!(
+            sim.qkd_session.as_ref().unwrap().decrypted_text,
+            sim.qkd_plaintext
+        );
     }
 }

@@ -7,6 +7,7 @@ use egui::{Align2, Color32, CornerRadius, FontId, Painter, Pos2, Rect, Sense, St
 
 pub struct DeckAction {
     pub jump_level: Option<usize>,
+    pub toggle_sandbox: bool,
     pub open_qkd_inspector: bool,
 }
 
@@ -37,15 +38,20 @@ fn draw_scope_frame(p: &Painter, rect: Rect, title: &str, readout: &str, readout
 }
 
 pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
-    let mut action = DeckAction { jump_level: None, open_qkd_inspector: false };
-    let lvl_title = sim.current_level().title;
+    let mut action = DeckAction { jump_level: None, toggle_sandbox: false, open_qkd_inspector: false };
+    let header_title = if sim.sandbox_mode {
+        format!("SANDBOX: {}", sim.sandbox_bp.name)
+    } else {
+        sim.current_level().title.to_string()
+    };
+    let header_col = if sim.sandbox_mode { ACCENT_PURPLE } else { ACCENT_CYAN };
     let lvl_mode = sim.current_level().mode;
     let total_levels = sim.levels.len();
 
-    // Header row: Level title, clickable pills 1..14, speed/pause controls, clock, status badge
+    // Header row: Level title, clickable pills 1..14 + SANDBOX, speed/pause controls, clock, status badge
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
-        ui.label(egui::RichText::new(lvl_title).strong().size(15.0).color(ACCENT_CYAN));
+        ui.label(egui::RichText::new(header_title).strong().size(15.0).color(header_col));
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Status badge
@@ -100,10 +106,24 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim) -> DeckAction {
 
             ui.add_space(4.0);
 
+            // SANDBOX toggle pill (drawn right-to-left, so it sits immediately right of Level 14)
+            let sb_on = sim.sandbox_mode;
+            let sb_bg = if sb_on { Color32::from_rgb(56, 36, 92) } else { Color32::from_rgb(24, 22, 38) };
+            let sb_bd = if sb_on { ACCENT_PURPLE } else { Color32::from_rgb(84, 68, 124) };
+            let sb_fg = if sb_on { TEXT_WHITE } else { ACCENT_PURPLE };
+            let sb_btn = egui::Button::new(egui::RichText::new("SANDBOX").strong().size(10.0).color(sb_fg))
+                .fill(sb_bg)
+                .stroke(Stroke::new(1.0_f32, sb_bd))
+                .corner_radius(CornerRadius::same(4))
+                .min_size(Vec2::new(60.0, 20.0));
+            if ui.add(sb_btn).on_hover_text("Toggle Free-Build Sandbox Mode [S]").clicked() {
+                action.toggle_sandbox = true;
+            }
+
             // Level pills (drawn right-to-left so index 1..N reads left-to-right!)
             ui.spacing_mut().item_spacing.x = 2.0;
             for i in (0..total_levels).rev() {
-                let is_cur = i == sim.level_idx;
+                let is_cur = !sim.sandbox_mode && i == sim.level_idx;
                 let is_done = sim.completed_levels.contains(&i);
                 let bg = if is_cur { Color32::from_rgb(36, 56, 78) } else { Color32::from_rgb(18, 24, 34) };
                 let bd = if is_cur { ACCENT_CYAN } else if is_done { ACCENT_GREEN } else { GRID_LINE };

@@ -22,6 +22,8 @@ const STEP_DT: f64 = 1.0 / 60.0;
 struct PersistedState {
     completed_levels: Vec<usize>,
     muted: bool,
+    #[serde(default)]
+    sandbox_bp: Option<SandboxBlueprint>,
 }
 
 pub struct QnBenchApp {
@@ -53,6 +55,9 @@ impl QnBenchApp {
                 sim.completed_levels.insert(idx);
             }
         }
+        if let Some(bp) = saved.sandbox_bp {
+            let _ = sim.load_sandbox_blueprint(bp);
+        }
         sim.seen_briefings.insert(0);
 
         let sfx = SoundEngine::new(saved.muted);
@@ -76,12 +81,23 @@ impl QnBenchApp {
 
     fn switch_level(&mut self, idx: usize, force_briefing: Option<bool>) {
         let target = idx % self.sim.levels.len();
-        self.sim.load_level(target);
+        self.sim.exit_sandbox(target);
         let show = force_briefing.unwrap_or(!self.sim.seen_briefings.contains(&target));
         if show {
             self.overlay = Overlay::Level(target);
             self.sim.seen_briefings.insert(target);
         } else {
+            self.overlay = Overlay::None;
+        }
+    }
+
+    fn toggle_sandbox(&mut self) {
+        self.sfx.play(SfxEvent::Select);
+        if self.sim.sandbox_mode {
+            let cur = self.sim.level_idx;
+            self.switch_level(cur, Some(false));
+        } else {
+            self.sim.enter_sandbox();
             self.overlay = Overlay::None;
         }
     }
@@ -122,7 +138,7 @@ impl QnBenchApp {
             return;
         }
 
-        let (fire, reset, pause, help, qkd_k, update_u, mute, prev_l, next_l, num_jump) = ctx.input(|i| {
+        let (fire, reset, pause, help, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
             let mut jump = None;
             let num_keys = [
                 Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
@@ -147,6 +163,9 @@ impl QnBenchApp {
                 i.key_pressed(Key::K),
                 i.key_pressed(Key::U),
                 i.key_pressed(Key::M),
+                i.key_pressed(Key::S),
+                i.key_pressed(Key::Q),
+                i.key_pressed(Key::E),
                 i.key_pressed(Key::OpenBracket) || i.key_pressed(Key::ArrowLeft),
                 i.key_pressed(Key::CloseBracket) || i.key_pressed(Key::ArrowRight),
                 jump,
@@ -157,13 +176,30 @@ impl QnBenchApp {
             self.sim.fire_photons();
         } else if reset {
             self.sfx.play(SfxEvent::Select);
-            let cur = self.sim.level_idx;
-            self.switch_level(cur, Some(false));
+            if self.sim.sandbox_mode {
+                self.sim.sync_sandbox_from_bp();
+            } else {
+                let cur = self.sim.level_idx;
+                self.switch_level(cur, Some(false));
+            }
         } else if pause && self.sim.sim_active {
             self.sim.paused = !self.sim.paused;
             self.sfx.play(SfxEvent::Select);
+        } else if sandbox_s {
+            self.toggle_sandbox();
+        } else if rot_ccw && self.sim.sandbox_mode {
+            self.sim.rotate_sandbox_dir(false);
+            self.sfx.play(SfxEvent::Select);
+        } else if rot_cw && self.sim.sandbox_mode {
+            self.sim.rotate_sandbox_dir(true);
+            self.sfx.play(SfxEvent::Select);
         } else if help {
-            self.overlay = Overlay::Level(self.sim.level_idx);
+            if self.sim.sandbox_mode {
+                self.sim.refresh_sandbox_json();
+                self.overlay = Overlay::SandboxShare;
+            } else {
+                self.overlay = Overlay::Level(self.sim.level_idx);
+            }
             self.sfx.play(SfxEvent::Select);
         } else if qkd_k && self.sim.is_qkd_level() {
             self.overlay = Overlay::QkdAes;
@@ -208,6 +244,7 @@ impl eframe::App for QnBenchApp {
         let state = PersistedState {
             completed_levels: completed,
             muted: self.sfx.muted,
+            sandbox_bp: Some(self.sim.sandbox_bp.clone()),
         };
         eframe::set_value(storage, STORAGE_KEY, &state);
     }
@@ -255,9 +292,13 @@ impl eframe::App for QnBenchApp {
                     .inner_margin(egui::Margin::same(14)),
             )
             .show(ctx, |ui| {
-                // Header row: COMPONENTS + ? INFO + SFX toggle
+                // Header row: COMPONENTS (or SANDBOX LAB) + ? INFO / LABS + SFX toggle
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("COMPONENTS").strong().size(16.0).color(TEXT_WHITE));
+                    if self.sim.sandbox_mode {
+                        ui.label(RichText::new("SANDBOX LAB").strong().size(16.0).color(ACCENT_PURPLE));
+                    } else {
+                        ui.label(RichText::new("COMPONENTS").strong().size(16.0).color(TEXT_WHITE));
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let sfx_on = self.sfx.is_active();
                         let m_bg = if sfx_on { Color32::from_rgb(24, 46, 56) } else { Color32::from_rgb(36, 26, 32) };
@@ -276,127 +317,277 @@ impl eframe::App for QnBenchApp {
                             self.sfx.toggle_mute();
                         }
 
-                        let i_btn = egui::Button::new(RichText::new("? INFO").strong().size(10.5).color(ACCENT_CYAN))
-                            .fill(Color32::from_rgb(22, 34, 50))
-                            .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
-                            .corner_radius(CornerRadius::same(5))
-                            .min_size(Vec2::new(58.0, 24.0));
-                        if ui.add(i_btn).clicked() {
-                            self.overlay = Overlay::Level(self.sim.level_idx);
-                            self.sfx.play(SfxEvent::Select);
+                        if self.sim.sandbox_mode {
+                            let b_btn = egui::Button::new(RichText::new("LABS / JSON").strong().size(10.5).color(ACCENT_PURPLE))
+                                .fill(Color32::from_rgb(32, 24, 52))
+                                .stroke(Stroke::new(1.0_f32, ACCENT_PURPLE))
+                                .corner_radius(CornerRadius::same(5))
+                                .min_size(Vec2::new(82.0, 24.0));
+                            if ui.add(b_btn).clicked() {
+                                self.sim.refresh_sandbox_json();
+                                self.overlay = Overlay::SandboxShare;
+                                self.sfx.play(SfxEvent::Select);
+                            }
+                        } else {
+                            let i_btn = egui::Button::new(RichText::new("? INFO").strong().size(10.5).color(ACCENT_CYAN))
+                                .fill(Color32::from_rgb(22, 34, 50))
+                                .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                                .corner_radius(CornerRadius::same(5))
+                                .min_size(Vec2::new(58.0, 24.0));
+                            if ui.add(i_btn).clicked() {
+                                self.overlay = Overlay::Level(self.sim.level_idx);
+                                self.sfx.play(SfxEvent::Select);
+                            }
                         }
                     });
                 });
-                ui.label(RichText::new("L-Click: Place  |  R-Click: Remove").size(12.0).color(TEXT_MUTED));
-                ui.add_space(10.0);
 
-                // Component Cards (scrollable on smaller windows so bottom buttons never clip)
-                let cards_max_h = (ui.available_height() - 196.0).max(80.0);
-                egui::ScrollArea::vertical()
-                    .id_salt("comp_cards_scroll")
-                    .max_height(cards_max_h)
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        let active = self.sim.active_components();
-                        for comp in active {
-                            let count = self.sim.inventory.get(&comp).copied().unwrap_or(0);
-                            let is_sel = self.sim.selected == Some(comp) && count > 0;
-                            let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
-                            let bd = if is_sel { comp.color() } else if count > 0 { GRID_LINE } else { Color32::from_rgb(30, 36, 46) };
+                if self.sim.sandbox_mode {
+                    ui.label(RichText::new("L-Click: Place / Rotate  |  R-Click: Erase").size(11.5).color(TEXT_MUTED));
+                    ui.add_space(6.0);
 
-                            let frame_resp = egui::Frame::NONE
-                                .fill(bg)
-                                .stroke(Stroke::new(if is_sel { 2.0_f32 } else { 1.0_f32 }, bd))
-                                .corner_radius(CornerRadius::same(6))
-                                .inner_margin(egui::Margin::symmetric(10, 7))
-                                .show(ui, |ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.horizontal(|ui| {
-                                        ui.vertical(|ui| {
-                                            let tcol = if count > 0 { comp.color() } else { TEXT_MUTED };
-                                            ui.label(RichText::new(format!("{} (x{count})", comp.name())).strong().size(14.0).color(tcol));
-                                            ui.label(RichText::new(comp.desc()).size(11.5).color(TEXT_MUTED));
-                                        });
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                                            let q_btn = egui::Button::new(RichText::new("?").strong().size(11.0).color(ACCENT_CYAN))
-                                                .fill(Color32::from_rgb(20, 28, 42))
-                                                .stroke(Stroke::new(1.0_f32, GRID_LINE))
-                                                .corner_radius(CornerRadius::same(11))
-                                                .min_size(Vec2::splat(22.0));
-                                            if ui.add(q_btn).on_hover_text("Hardware Physics & Tip").clicked() {
-                                                self.overlay = Overlay::Comp(comp.doc_key());
-                                                self.sfx.play(SfxEvent::Select);
-                                            }
-                                        });
-                                    });
-                                })
-                                .response;
-
-                            let card_click = ui.interact(frame_resp.rect, ui.id().with(("comp_card", comp)), egui::Sense::click());
-                            if card_click.clicked() && count > 0 && self.overlay == Overlay::None {
-                                self.sim.selected = Some(comp);
+                    // Sandbox Category Tabs: OPTICS | CHANNELS | SOURCES
+                    ui.horizontal(|ui| {
+                        let tab_w = (ui.available_width() - 12.0) / 3.0;
+                        for (tab, label) in [
+                            (SandboxTab::Optics, "OPTICS"),
+                            (SandboxTab::Channels, "CHANNELS"),
+                            (SandboxTab::Sources, "SOURCES"),
+                        ] {
+                            let active = self.sim.sandbox_tab == tab;
+                            let btn = egui::Button::new(
+                                RichText::new(label)
+                                    .strong()
+                                    .size(10.5)
+                                    .color(if active { TEXT_WHITE } else { TEXT_MUTED }),
+                            )
+                            .fill(if active { Color32::from_rgb(46, 34, 74) } else { PANEL_BG })
+                            .stroke(Stroke::new(1.0_f32, if active { ACCENT_PURPLE } else { GRID_LINE }))
+                            .corner_radius(CornerRadius::same(5))
+                            .min_size(Vec2::new(tab_w, 25.0));
+                            if ui.add(btn).clicked() {
+                                self.sim.sandbox_tab = tab;
                                 self.sfx.play(SfxEvent::Select);
                             }
-                            ui.add_space(6.0);
                         }
                     });
+                    ui.add_space(6.0);
+
+                    // Rotatable Emitter Direction Strip when an emitter/EPR tool is active
+                    if self.sim.sandbox_tool.is_rotatable() {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("AIM [Q/E]:").strong().size(10.5).color(ACCENT_AMBER));
+                            for d in [Dir::Right, Dir::Down, Dir::Left, Dir::Up] {
+                                let sel = self.sim.sandbox_dir == d;
+                                let b = egui::Button::new(
+                                    RichText::new(d.arrow())
+                                        .strong()
+                                        .size(12.0)
+                                        .color(if sel { BG_DARK } else { TEXT_WHITE }),
+                                )
+                                .fill(if sel { ACCENT_AMBER } else { PANEL_BG })
+                                .stroke(Stroke::new(1.0_f32, if sel { ACCENT_AMBER } else { GRID_LINE }))
+                                .corner_radius(CornerRadius::same(4))
+                                .min_size(Vec2::new(28.0, 22.0));
+                                if ui.add(b).clicked() {
+                                    self.sim.sandbox_dir = d;
+                                    self.sfx.play(SfxEvent::Select);
+                                }
+                            }
+                        });
+                        ui.add_space(6.0);
+                    }
+
+                    let cards_max_h = (ui.available_height() - 196.0).max(80.0);
+                    let tools: &[SandboxTool] = match self.sim.sandbox_tab {
+                        SandboxTab::Optics => &SandboxTool::OPTICS,
+                        SandboxTab::Channels => &SandboxTool::CHANNELS,
+                        SandboxTab::Sources => &SandboxTool::SOURCES,
+                    };
+                    egui::ScrollArea::vertical()
+                        .id_salt(("sandbox_cards_scroll", self.sim.sandbox_tab as u8))
+                        .max_height(cards_max_h)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            for (idx, &tool) in tools.iter().enumerate() {
+                                let is_sel = self.sim.sandbox_tool == tool;
+                                let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
+                                let bd = if is_sel { tool.color() } else { GRID_LINE };
+
+                                let frame_resp = egui::Frame::NONE
+                                    .fill(bg)
+                                    .stroke(Stroke::new(if is_sel { 2.0_f32 } else { 1.0_f32 }, bd))
+                                    .corner_radius(CornerRadius::same(6))
+                                    .inner_margin(egui::Margin::symmetric(10, 6))
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.horizontal(|ui| {
+                                            ui.vertical(|ui| {
+                                                ui.label(RichText::new(format!("{}  (∞)", tool.name())).strong().size(13.5).color(tool.color()));
+                                                ui.label(RichText::new(tool.desc()).size(11.0).color(TEXT_MUTED));
+                                            });
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                                let q_btn = egui::Button::new(RichText::new("?").strong().size(11.0).color(ACCENT_CYAN))
+                                                    .fill(Color32::from_rgb(20, 28, 42))
+                                                    .stroke(Stroke::new(1.0_f32, GRID_LINE))
+                                                    .corner_radius(CornerRadius::same(11))
+                                                    .min_size(Vec2::splat(22.0));
+                                                if ui.add(q_btn).on_hover_text("Hardware Physics & Tip").clicked() {
+                                                    self.overlay = Overlay::Comp(tool.doc_key());
+                                                    self.sfx.play(SfxEvent::Select);
+                                                }
+                                            });
+                                        });
+                                    })
+                                    .response;
+
+                                let card_click = ui.interact(frame_resp.rect, ui.id().with(("sb_card", idx)), egui::Sense::click());
+                                if card_click.clicked() && self.overlay == Overlay::None {
+                                    self.sim.sandbox_tool = tool;
+                                    self.sfx.play(SfxEvent::Select);
+                                }
+                                ui.add_space(5.0);
+                            }
+                        });
+                } else {
+                    ui.label(RichText::new("L-Click: Place  |  R-Click: Remove").size(12.0).color(TEXT_MUTED));
+                    ui.add_space(10.0);
+
+                    // Component Cards (scrollable on smaller windows so bottom buttons never clip)
+                    let cards_max_h = (ui.available_height() - 196.0).max(80.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("comp_cards_scroll")
+                        .max_height(cards_max_h)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            let active = self.sim.active_components();
+                            for comp in active {
+                                let count = self.sim.inventory.get(&comp).copied().unwrap_or(0);
+                                let is_sel = self.sim.selected == Some(comp) && count > 0;
+                                let bg = if is_sel { Color32::from_rgb(36, 48, 68) } else { PANEL_BG };
+                                let bd = if is_sel { comp.color() } else if count > 0 { GRID_LINE } else { Color32::from_rgb(30, 36, 46) };
+
+                                let frame_resp = egui::Frame::NONE
+                                    .fill(bg)
+                                    .stroke(Stroke::new(if is_sel { 2.0_f32 } else { 1.0_f32 }, bd))
+                                    .corner_radius(CornerRadius::same(6))
+                                    .inner_margin(egui::Margin::symmetric(10, 7))
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.horizontal(|ui| {
+                                            ui.vertical(|ui| {
+                                                let tcol = if count > 0 { comp.color() } else { TEXT_MUTED };
+                                                ui.label(RichText::new(format!("{} (x{count})", comp.name())).strong().size(14.0).color(tcol));
+                                                ui.label(RichText::new(comp.desc()).size(11.5).color(TEXT_MUTED));
+                                            });
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                                let q_btn = egui::Button::new(RichText::new("?").strong().size(11.0).color(ACCENT_CYAN))
+                                                    .fill(Color32::from_rgb(20, 28, 42))
+                                                    .stroke(Stroke::new(1.0_f32, GRID_LINE))
+                                                    .corner_radius(CornerRadius::same(11))
+                                                    .min_size(Vec2::splat(22.0));
+                                                if ui.add(q_btn).on_hover_text("Hardware Physics & Tip").clicked() {
+                                                    self.overlay = Overlay::Comp(comp.doc_key());
+                                                    self.sfx.play(SfxEvent::Select);
+                                                }
+                                            });
+                                        });
+                                    })
+                                    .response;
+
+                                let card_click = ui.interact(frame_resp.rect, ui.id().with(("comp_card", comp)), egui::Sense::click());
+                                if card_click.clicked() && count > 0 && self.overlay == Overlay::None {
+                                    self.sim.selected = Some(comp);
+                                    self.sfx.play(SfxEvent::Select);
+                                }
+                                ui.add_space(6.0);
+                            }
+                        });
+                }
 
                 // Bottom-anchored actions inside sidebar
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.y = 8.0;
 
-                    // Prev / Next Level Row (declare full 40px height upfront so bottom_up never clips)
+                    // Bottom Action Row (declare full 40px height upfront so bottom_up never clips)
                     let row_w = ui.available_width();
                     ui.allocate_ui_with_layout(
                         Vec2::new(row_w, 40.0),
                         egui::Layout::left_to_right(egui::Align::Center),
                         |ui| {
-                            let can_prev = self.sim.level_idx > 0;
-                            let prev_btn = egui::Button::new(
-                                RichText::new("<- PREV")
-                                    .strong()
-                                    .size(13.5)
-                                    .color(if can_prev { TEXT_WHITE } else { TEXT_MUTED }),
-                            )
-                            .fill(if can_prev { PANEL_BG } else { Color32::from_rgb(24, 30, 42) })
-                            .stroke(Stroke::new(1.0_f32, if can_prev { GRID_LINE } else { Color32::from_rgb(34, 40, 52) }))
-                            .corner_radius(CornerRadius::same(6))
-                            .min_size(Vec2::new(92.0, 40.0));
-                            if ui.add_enabled(can_prev, prev_btn).clicked() {
-                                self.sfx.play(SfxEvent::Select);
-                                let p = self.sim.level_idx - 1;
-                                self.switch_level(p, None);
-                            }
+                            if self.sim.sandbox_mode {
+                                let clr_btn = egui::Button::new(RichText::new("CLEAR BENCH").strong().size(12.5).color(ACCENT_RED))
+                                    .fill(Color32::from_rgb(42, 20, 28))
+                                    .stroke(Stroke::new(1.0_f32, ACCENT_RED))
+                                    .corner_radius(CornerRadius::same(6))
+                                    .min_size(Vec2::new(112.0, 40.0));
+                                if ui.add(clr_btn).clicked() {
+                                    self.sim.clear_sandbox();
+                                    self.sfx.play(SfxEvent::Remove);
+                                }
 
-                            let done = self.sim.level_complete;
-                            let next_lbl = if done { "NEXT LEVEL ->" } else { "SOLVE TO ADVANCE" };
-                            let next_btn = egui::Button::new(
-                                RichText::new(next_lbl)
-                                    .strong()
-                                    .size(13.5)
-                                    .color(if done { BG_DARK } else { TEXT_MUTED }),
-                            )
-                            .fill(if done { ACCENT_GREEN } else { Color32::from_rgb(30, 38, 50) })
-                            .corner_radius(CornerRadius::same(6))
-                            .min_size(Vec2::new(ui.available_width(), 40.0));
-                            if ui.add_enabled(done, next_btn).clicked() {
-                                self.sfx.play(SfxEvent::Select);
-                                let n = (self.sim.level_idx + 1) % self.sim.levels.len();
-                                self.switch_level(n, None);
+                                let share_btn = egui::Button::new(RichText::new("SHARE / LOAD LAB").strong().size(12.5).color(BG_DARK))
+                                    .fill(ACCENT_PURPLE)
+                                    .corner_radius(CornerRadius::same(6))
+                                    .min_size(Vec2::new(ui.available_width(), 40.0));
+                                if ui.add(share_btn).clicked() {
+                                    self.sim.refresh_sandbox_json();
+                                    self.overlay = Overlay::SandboxShare;
+                                    self.sfx.play(SfxEvent::Select);
+                                }
+                            } else {
+                                let can_prev = self.sim.level_idx > 0;
+                                let prev_btn = egui::Button::new(
+                                    RichText::new("<- PREV")
+                                        .strong()
+                                        .size(13.5)
+                                        .color(if can_prev { TEXT_WHITE } else { TEXT_MUTED }),
+                                )
+                                .fill(if can_prev { PANEL_BG } else { Color32::from_rgb(24, 30, 42) })
+                                .stroke(Stroke::new(1.0_f32, if can_prev { GRID_LINE } else { Color32::from_rgb(34, 40, 52) }))
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(92.0, 40.0));
+                                if ui.add_enabled(can_prev, prev_btn).clicked() {
+                                    self.sfx.play(SfxEvent::Select);
+                                    let p = self.sim.level_idx - 1;
+                                    self.switch_level(p, None);
+                                }
+
+                                let done = self.sim.level_complete;
+                                let next_lbl = if done { "NEXT LEVEL ->" } else { "SOLVE TO ADVANCE" };
+                                let next_btn = egui::Button::new(
+                                    RichText::new(next_lbl)
+                                        .strong()
+                                        .size(13.5)
+                                        .color(if done { BG_DARK } else { TEXT_MUTED }),
+                                )
+                                .fill(if done { ACCENT_GREEN } else { Color32::from_rgb(30, 38, 50) })
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(ui.available_width(), 40.0));
+                                if ui.add_enabled(done, next_btn).clicked() {
+                                    self.sfx.play(SfxEvent::Select);
+                                    let n = (self.sim.level_idx + 1) % self.sim.levels.len();
+                                    self.switch_level(n, None);
+                                }
                             }
                         },
                     );
 
-                    // Reset Level button
-                    let reset_btn = egui::Button::new(RichText::new("RESET LEVEL  [R]").strong().size(13.5).color(TEXT_WHITE))
+                    // Reset Level / Stop Beam button
+                    let reset_lbl = if self.sim.sandbox_mode { "RESET BEAM  [R]" } else { "RESET LEVEL  [R]" };
+                    let reset_btn = egui::Button::new(RichText::new(reset_lbl).strong().size(13.5).color(TEXT_WHITE))
                         .fill(PANEL_BG)
                         .stroke(Stroke::new(1.0_f32, GRID_LINE))
                         .corner_radius(CornerRadius::same(6))
                         .min_size(Vec2::new(ui.available_width(), 36.0));
                     if ui.add(reset_btn).clicked() {
                         self.sfx.play(SfxEvent::Select);
-                        let cur = self.sim.level_idx;
-                        self.switch_level(cur, Some(false));
+                        if self.sim.sandbox_mode {
+                            self.sim.sync_sandbox_from_bp();
+                        } else {
+                            let cur = self.sim.level_idx;
+                            self.switch_level(cur, Some(false));
+                        }
                     }
 
                     // Fire Laser button
@@ -409,8 +600,13 @@ impl eframe::App for QnBenchApp {
                     }
 
                     // Keybind legend
+                    let hint = if self.sim.sandbox_mode {
+                        "SPACE Fire • Q/E Aim • S Exit Sandbox • P Pause"
+                    } else {
+                        "SPACE Fire • S Sandbox • P Pause • R Reset • H Info"
+                    };
                     ui.label(
-                        RichText::new("SPACE Fire • P Pause • R Reset • H Info")
+                        RichText::new(hint)
                             .size(10.5)
                             .color(TEXT_MUTED),
                     );
@@ -479,6 +675,9 @@ impl eframe::App for QnBenchApp {
                 if let Some(target_idx) = action.jump_level {
                     self.sfx.play(SfxEvent::Select);
                     self.switch_level(target_idx, None);
+                }
+                if action.toggle_sandbox {
+                    self.toggle_sandbox();
                 }
                 if action.open_qkd_inspector {
                     self.sfx.play(SfxEvent::Select);
