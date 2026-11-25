@@ -18,17 +18,17 @@ Native macOS and Windows builds check GitHub Releases in the background on start
 
 ## Screenshots
 
-| Level 1: Wavelength Transduction & Filtering | Level 4: Entanglement Swapping (HOM) |
+| Level 1: Wavelength Transduction & Alignment Laser | Level 4: Entanglement Swapping (HOM) |
 | --- | --- |
 | ![Level 1: Wavelength Transduction](docs/images/level1-transduction.png) | ![Level 4: Entanglement Swapping](docs/images/level4-hom-swapping.png) |
 
-| Level 9: Entanglement Distillation | Level 11: Satellite Downlink (ATMOS) |
+| Level 15: Heralded Multi-Hop Repeater Chain | Level 16: Satellite E91 QKD Grand Finale |
 | --- | --- |
-| ![Level 9: Entanglement Distillation](docs/images/level9-distillation.png) | ![Level 11: Satellite Downlink](docs/images/level11-satellite-ao.png) |
+| ![Level 15: Multi-Hop Repeater Chain](docs/images/level15-repeater-chain.png) | ![Level 16: Satellite E91 QKD](docs/images/level16-satellite-qkd.png) |
 
-| Level 14: Entangled E91 QKD & Eve Detection | Live FIPS-197 AES-256 Cryptography Inspector |
+| Free-Build Sandbox & Shareable URLs | Live FIPS-197 AES-256 Cryptography Inspector |
 | --- | --- |
-| ![Level 14: Entangled E91 QKD](docs/images/level14-qkd-aes.png) | ![QKD and AES-256 Inspector](docs/images/qkd-aes-inspector.png) |
+| ![Free-Build Sandbox Mode](docs/images/sandbox-e91-lab.png) | ![QKD and AES-256 Inspector](docs/images/qkd-aes-inspector.png) |
 
 ---
 

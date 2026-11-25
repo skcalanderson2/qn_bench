@@ -273,7 +273,9 @@ fn draw_qkd_panes(ui: &mut Ui, sim: &BenchSim, pane_w: f32, scope_h: f32, action
         let tag = if sim.current_level().mode == TargetMode::QkdE91 { "E91 BELL" } else { "BB84 QBER" };
         (tag.to_string(), TEXT_MUTED)
     };
-    draw_scope_frame(&p, p1, "QBER / BELL CHSH", &q_str, q_col);
+    let compact = pane_w < 215.0;
+    let q_title = if compact { "QBER" } else { "QBER / BELL CHSH" };
+    draw_scope_frame(&p, p1, q_title, &q_str, q_col);
     let qx1 = p1.left() + 8.0;
     let qx2 = p1.right() - 8.0;
     let qy1 = p1.top() + 24.0;
@@ -298,7 +300,11 @@ fn draw_qkd_panes(ui: &mut Ui, sim: &BenchSim, pane_w: f32, scope_h: f32, action
     let (p2, _) = ui.allocate_exact_size(Vec2::new(pane_w, scope_h), Sense::hover());
     let p = ui.painter_at(p2);
     let s_str = if !qs.rounds.is_empty() {
-        format!("{} SIFTED / {} RX", qs.sifted_alice.len(), qs.rounds.len())
+        if compact {
+            format!("{}/{} SIFTED", qs.sifted_alice.len(), qs.rounds.len())
+        } else {
+            format!("{} SIFTED / {} RX", qs.sifted_alice.len(), qs.rounds.len())
+        }
     } else {
         "AWAITING QUBITS".to_string()
     };
@@ -309,7 +315,7 @@ fn draw_qkd_panes(ui: &mut Ui, sim: &BenchSim, pane_w: f32, scope_h: f32, action
     } else {
         TEXT_MUTED
     };
-    draw_scope_frame(&p, p2, "BASIS SIFTING", &s_str, s_col);
+    draw_scope_frame(&p, p2, if compact { "SIFTING" } else { "BASIS SIFTING" }, &s_str, s_col);
     p.text(Pos2::new(p2.left() + 8.0, p2.top() + 28.0), Align2::LEFT_TOP, "A:", FontId::proportional(10.5), TEXT_MUTED);
     p.text(Pos2::new(p2.left() + 8.0, p2.top() + 47.0), Align2::LEFT_TOP, "B:", FontId::proportional(10.5), TEXT_MUTED);
     p.text(Pos2::new(p2.left() + 8.0, p2.top() + 69.0), Align2::LEFT_TOP, "KEY:", FontId::proportional(10.5), TEXT_MUTED);
@@ -351,7 +357,7 @@ fn draw_qkd_panes(ui: &mut Ui, sim: &BenchSim, pane_w: f32, scope_h: f32, action
         QkdVerdict::Running => ("DISTILLING...", ACCENT_AMBER),
         _ => ("STANDBY", TEXT_MUTED),
     };
-    draw_scope_frame(&p, p3, "AES-256 ENGINE", a_str, a_col);
+    draw_scope_frame(&p, p3, if compact { "AES-256" } else { "AES-256 ENGINE" }, a_str, a_col);
 
     if let Some(ak) = qs.alice_key {
         let kh = crate::qkd::hex_upper(&ak);
