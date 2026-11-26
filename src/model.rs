@@ -5,9 +5,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const TILE_SIZE: f32 = 80.0;
+pub const BENCH_TILE_PX: f32 = 76.0;
 pub const GRID_COLS: i32 = 10;
 pub const GRID_ROWS: i32 = 6;
+pub const MAX_GRID_COLS: i32 = 64;
+pub const MAX_GRID_ROWS: i32 = 48;
+#[allow(dead_code)]
 pub const BOARD_W: f32 = GRID_COLS as f32 * TILE_SIZE;
+#[allow(dead_code)]
 pub const BOARD_H: f32 = GRID_ROWS as f32 * TILE_SIZE;
 
 // --- Optical Bench Dark Palette ---
@@ -550,7 +555,7 @@ impl SandboxBlueprint {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        let in_bounds = |x: i32, y: i32| (0..GRID_COLS).contains(&x) && (0..GRID_ROWS).contains(&y);
+        let in_bounds = |x: i32, y: i32| (0..MAX_GRID_COLS).contains(&x) && (0..MAX_GRID_ROWS).contains(&y);
         if let Some((x, y)) = self.epr_source {
             if !in_bounds(x, y) {
                 return Err(format!("EPR source ({x},{y}) out of grid bounds."));

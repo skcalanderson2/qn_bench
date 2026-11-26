@@ -498,364 +498,437 @@ fn doc_key_at(sim: &BenchSim, pos: (i32, i32)) -> Option<&'static str> {
 
 pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -> Option<&'static str> {
     let mut inspect_doc: Option<&'static str> = None;
+    ui.spacing_mut().item_spacing = Vec2::ZERO;
     let avail = ui.available_size();
     let hud_reserve = 26.0;
-    let grid_avail_h = (avail.y - hud_reserve).max(160.0);
-    let scale = (avail.x / BOARD_W).min(grid_avail_h / BOARD_H).max(0.35);
-    let board_size = Vec2::new(BOARD_W * scale, BOARD_H * scale);
+    let scroll_avail_h = (avail.y - hud_reserve).max(120.0);
 
-    let (outer_rect, _) = ui.allocate_exact_size(avail, Sense::hover());
-    let origin = Pos2::new(
-        outer_rect.left() + ((avail.x - board_size.x) * 0.5).max(0.0),
-        outer_rect.top() + hud_reserve + ((grid_avail_h - board_size.y) * 0.5).max(0.0),
-    );
-    let board_rect = Rect::from_min_size(origin, board_size);
-    let resp = ui.interact(board_rect, ui.id().with("optical_bench"), Sense::click());
-    let p_outer = ui.painter_at(outer_rect);
-    let p = ui.painter_at(board_rect);
+    // Keep squares at a fixed visual size (BENCH_TILE_PX) so resizing the window adds more
+    // squares instead of stretching tiles larger. By definition of floor(W / tile_px),
+    // view_cols squares always fit without scrollbars, and adding +1 column/row on edge
+    // placement is mathematically guaranteed to exceed the viewport and show scrollbars.
+    let tile_px = BENCH_TILE_PX;
+    let scale = tile_px / TILE_SIZE;
+    let view_cols = (avail.x / tile_px).floor().max(1.0) as i32;
+    let view_rows = (scroll_avail_h / tile_px).floor().max(1.0) as i32;
+    sim.sync_bench_bounds(view_cols, view_rows);
 
-    let tile_rect = |gx: i32, gy: i32| -> Rect {
-        Rect::from_min_size(
-            Pos2::new(origin.x + gx as f32 * TILE_SIZE * scale, origin.y + gy as f32 * TILE_SIZE * scale),
-            Vec2::splat(TILE_SIZE * scale),
-        )
-    };
-    let to_screen = |wx: f32, wy: f32| -> Pos2 {
-        Pos2::new(origin.x + wx * scale, origin.y + wy * scale)
-    };
+    // Non-scrolling top HUD strip for Alignment Laser readout & grid size indicator
+    let (hud_bar_rect, _) = ui.allocate_exact_size(Vec2::new(avail.x, hud_reserve), Sense::hover());
+    let p_hud = ui.painter_at(hud_bar_rect);
 
-    // 1. Machined optical breadboard grid
-    p.rect_filled(board_rect, 0.0, GRID_BG);
-    for r in 0..GRID_ROWS {
-        for c in 0..GRID_COLS {
-            let tr = tile_rect(c, r);
-            p.rect_stroke(tr, 0.0, Stroke::new(1.0_f32, GRID_LINE), StrokeKind::Inside);
-            for hx in [20.0f32, 60.0] {
-                for hy in [20.0f32, 60.0] {
-                    p.circle_filled(Pos2::new(tr.left() + hx * scale, tr.top() + hy * scale), 2.0 * scale, BREADBOARD_HOLE);
-                }
-            }
-        }
-    }
+    let board_size = Vec2::new(sim.bench_cols as f32 * tile_px, sim.bench_rows as f32 * tile_px);
+    let mut align_beams: Option<Vec<AlignmentBeam>> = None;
 
-    // 2. Fixed & user-placed components
-    for (&(gx, gy), &tile) in &sim.grid {
-        let tr = tile_rect(gx, gy);
-        draw_tile_schematic(&p, tr, tile, sim.frame, 255);
-        if sim.colorblind_mode {
-            let badge = match tile {
-                Tile::Fiber => Some("1550"),
-                Tile::LitFiber => Some("+N15"),
-                Tile::PmdFiber => Some("PMD"),
-                Tile::CdFiber => Some("CD"),
-                Tile::Atmos => Some("ATM"),
-                Tile::Eve => Some("EVE!"),
-                _ => None,
-            };
-            if let Some(tag) = badge {
-                let br = Rect::from_min_size(
-                    Pos2::new(tr.left() + 4.0 * scale, tr.top() + 4.0 * scale),
-                    Vec2::new((tag.len() as f32 * 5.8 + 6.0) * scale, 13.0 * scale),
-                );
-                p.rect_filled(br, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 225));
-                p.rect_stroke(br, CornerRadius::same(2), Stroke::new(1.0_f32, TEXT_WHITE), StrokeKind::Inside);
-                p.text(br.center(), Align2::CENTER_CENTER, tag, FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
-            }
-        }
-    }
+    // Use solid, immediately visible scrollbars whenever the bench overflows the viewport
+    ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
+    let bar_space = ui.style().spacing.scroll.allocated_width();
+    let mut needs_h_scroll = board_size.x > avail.x;
+    let mut needs_v_scroll = board_size.y > scroll_avail_h;
+    let inner_vp_x = if needs_v_scroll { (avail.x - bar_space).max(tile_px) } else { avail.x };
+    let inner_vp_y = if needs_h_scroll { (scroll_avail_h - bar_space).max(tile_px) } else { scroll_avail_h };
+    needs_h_scroll = board_size.x > inner_vp_x;
+    needs_v_scroll = board_size.y > inner_vp_y;
 
-    // 2b. Live Alignment Laser Preview (subtle animated guide beam + timing readout when idle)
-    let align_beams = if sim.align_laser && !sim.sim_active {
-        let beams = sim.trace_alignment_beams();
-        let phase = (sim.frame as f32 * 0.7) % 16.0;
-        for beam in &beams {
-            let mut prev_wl: Option<u32> = None;
-            for seg in &beam.segments {
-                let c1 = tile_rect(seg.x1, seg.y1).center();
-                let c2 = tile_rect(seg.x2, seg.y2).center();
-                let base_col = if beam.label == "H" {
-                    ACCENT_TEAL
-                } else if beam.label == "P" {
-                    ACCENT_GREEN
-                } else if seg.wavelength == 637 {
-                    ACCENT_ORANGE
-                } else if seg.wavelength == 780 {
-                    ACCENT_RED
-                } else {
-                    ACCENT_CYAN
-                };
-                // Colorblind mode uses distinct dash cadences per wavelength + inline wavelength pills
-                let (dash_len, gap_len, width_mult) = if sim.colorblind_mode {
-                    match seg.wavelength {
-                        780 => (4.0, 4.0, 2.8),
-                        637 => (6.0, 9.0, 2.8),
-                        _ => (14.0, 5.0, 2.6),
-                    }
-                } else {
-                    (8.0, 8.0, 2.2)
-                };
-                draw_dashed_segment(
-                    &p,
-                    c1,
-                    c2,
-                    with_alpha(base_col, if sim.colorblind_mode { 195 } else { 130 }),
-                    (width_mult * scale).max(1.2),
-                    dash_len * scale,
-                    gap_len * scale,
-                    phase * scale,
-                );
-                if sim.colorblind_mode && prev_wl != Some(seg.wavelength) {
-                    prev_wl = Some(seg.wavelength);
-                    let mid = Pos2::new((c1.x + c2.x) * 0.5, (c1.y + c2.y) * 0.5 - 10.0 * scale);
-                    let wtag = format!("{}", seg.wavelength);
-                    let tr_b = Rect::from_center_size(mid, Vec2::new(28.0 * scale, 12.0 * scale));
-                    p.rect_filled(tr_b, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 230));
-                    p.rect_stroke(tr_b, CornerRadius::same(2), Stroke::new(1.0_f32, base_col), StrokeKind::Inside);
-                    p.text(mid, Align2::CENTER_CENTER, wtag, FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
-                }
-            }
-            if beam.blocked {
-                let end_c = tile_rect(beam.end_pos.0, beam.end_pos.1).center();
-                let d = 10.0 * scale;
-                let pulse_a = (155.0 + 75.0 * (sim.frame as f32 * 0.14).sin()) as u8;
-                let hcol = with_alpha(ACCENT_RED, pulse_a);
-                p.line_segment([Pos2::new(end_c.x - d, end_c.y - d), Pos2::new(end_c.x + d, end_c.y + d)], Stroke::new(2.5 * scale, hcol));
-                p.line_segment([Pos2::new(end_c.x - d, end_c.y + d), Pos2::new(end_c.x + d, end_c.y - d)], Stroke::new(2.5 * scale, hcol));
-            }
-        }
-        Some(beams)
-    } else {
-        None
-    };
-
-    // 3. Pointer interaction + hover ghost preview + precision reticle
-    let hover_tile = if !overlay_open {
-        resp.hover_pos().map(|pos| {
-            let gx = ((pos.x - origin.x) / (TILE_SIZE * scale)).floor() as i32;
-            let gy = ((pos.y - origin.y) / (TILE_SIZE * scale)).floor() as i32;
-            (gx.clamp(0, GRID_COLS - 1), gy.clamp(0, GRID_ROWS - 1))
-        })
-    } else {
-        None
-    };
-
-    if let Some((hgx, hgy)) = hover_tile {
-        let shift_held = ui.input(|i| i.modifiers.shift);
-        if (resp.clicked_by(egui::PointerButton::Primary) && shift_held)
-            || resp.clicked_by(egui::PointerButton::Middle)
-        {
-            inspect_doc = doc_key_at(sim, (hgx, hgy));
-        } else if resp.clicked_by(egui::PointerButton::Primary) {
-            sim.bench_primary_click(hgx, hgy);
-        } else if resp.clicked_by(egui::PointerButton::Secondary) {
-            sim.remove_component(hgx, hgy);
-        }
-
-        let tr = tile_rect(hgx, hgy);
-        let draw_reticle = |p: &Painter, reticle_col: Color32| {
-            let m = 3.0 * scale;
-            let arm = 10.0 * scale;
-            for (cx0, cy0, dx, dy) in [
-                (tr.left() + m, tr.top() + m, arm, arm),
-                (tr.right() - m, tr.top() + m, -arm, arm),
-                (tr.left() + m, tr.bottom() - m, arm, -arm),
-                (tr.right() - m, tr.bottom() - m, -arm, -arm),
-            ] {
-                p.line_segment([Pos2::new(cx0, cy0), Pos2::new(cx0 + dx, cy0)], Stroke::new(1.2_f32, reticle_col));
-                p.line_segment([Pos2::new(cx0, cy0), Pos2::new(cx0, cy0 + dy)], Stroke::new(1.2_f32, reticle_col));
-            }
-            p.text(
-                Pos2::new(tr.left() + 6.0 * scale, tr.top() + 5.0 * scale),
-                Align2::LEFT_TOP,
-                format!("{hgx},{hgy}"),
-                FontId::proportional((10.0 * scale).max(8.0)),
-                Color32::from_rgb(90, 130, 160),
+    egui::ScrollArea::both()
+        .id_salt("optical_bench_scroll")
+        .max_width(avail.x)
+        .max_height(scroll_avail_h)
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            let pad_x = if needs_h_scroll { 0.0 } else { ((inner_vp_x - board_size.x) * 0.5).floor().max(0.0) };
+            let pad_y = if needs_v_scroll { 0.0 } else { ((inner_vp_y - board_size.y) * 0.5).floor().max(0.0) };
+            let alloc_size = Vec2::new(
+                if needs_h_scroll { board_size.x } else { inner_vp_x },
+                if needs_v_scroll { board_size.y } else { inner_vp_y },
             );
-        };
+            let (canvas_rect, _) = ui.allocate_exact_size(alloc_size, Sense::hover());
+            let origin = Pos2::new(canvas_rect.left() + pad_x, canvas_rect.top() + pad_y);
+            let board_rect = Rect::from_min_size(origin, board_size);
+            let resp = ui.interact(board_rect, ui.id().with("optical_bench"), Sense::click());
+            let visible_clip = board_rect.intersect(ui.clip_rect());
+            let p = ui.painter().with_clip_rect(visible_clip);
 
-        if sim.erase_mode {
-            let can_erase = sim.sandbox_mode || sim.user_placed.contains(&(hgx, hgy));
-            let ecol = if can_erase { ACCENT_RED } else { Color32::from_rgb(110, 68, 76) };
-            draw_reticle(&p, ecol);
-            if can_erase {
-                let d = 14.0 * scale;
-                let c = tr.center();
-                p.rect_filled(tr.shrink(4.0 * scale), CornerRadius::same(4), Color32::from_rgba_unmultiplied(244, 63, 94, 42));
-                p.line_segment([Pos2::new(c.x - d, c.y - d), Pos2::new(c.x + d, c.y + d)], Stroke::new(2.5 * scale, ACCENT_RED));
-                p.line_segment([Pos2::new(c.x - d, c.y + d), Pos2::new(c.x + d, c.y - d)], Stroke::new(2.5 * scale, ACCENT_RED));
-            }
-        } else if sim.sandbox_mode {
-            match sim.sandbox_tool {
-                SandboxTool::Tile(t) => draw_tile_schematic(&p, tr, t, sim.frame, 115),
-                SandboxTool::EmitterIon => draw_emitter(&p, tr, '+', sim.sandbox_dir, 780, Pol::Plus, false, sim.frame, 120),
-                SandboxTool::EmitterNv => draw_emitter(&p, tr, '+', sim.sandbox_dir, 637, Pol::Plus, false, sim.frame, 120),
-                SandboxTool::EprSource => draw_epr_source(&p, tr, matches!(sim.sandbox_dir, Dir::Up | Dir::Down), sim.frame, 120),
-                SandboxTool::DetectorSnspd => draw_target(&p, tr, TargetMode::Single, None, false, 120),
-                SandboxTool::DetectorBsm => draw_target(&p, tr, TargetMode::Bsm, None, false, 120),
-                SandboxTool::DetectorQpu => draw_target(&p, tr, TargetMode::Qpu, None, false, 120),
-                SandboxTool::DetectorBobBb84 => draw_target(&p, tr, TargetMode::QkdBb84, Some("BOB RX"), false, 120),
-                SandboxTool::DetectorAliceE91 => draw_target(&p, tr, TargetMode::QkdE91, Some("ALICE RX"), false, 120),
-                SandboxTool::DetectorBobE91 => draw_target(&p, tr, TargetMode::QkdE91, Some("BOB RX"), false, 120),
-            }
-            draw_reticle(&p, ACCENT_PURPLE);
-        } else {
-            let lvl = sim.current_level();
-            if !sim.grid.contains_key(&(hgx, hgy)) && !lvl.is_emitter((hgx, hgy)) && !lvl.is_target((hgx, hgy)) {
-                if let Some(sel) = sim.selected {
-                    if sim.inventory.get(&sel).copied().unwrap_or(0) > 0 {
-                        draw_tile_schematic(&p, tr, Tile::Placeable(sel), sim.frame, 115);
-                        draw_reticle(&p, ACCENT_CYAN);
-                    }
-                }
-            }
-        }
-    }
-
-    // 4. Emitters & Target(s)
-    let lvl = sim.current_level();
-    if let Some((sx, sy)) = lvl.epr_source {
-        let vert = lvl
-            .emitters
-            .iter()
-            .find(|e| (e.gx, e.gy) == (sx, sy))
-            .map(|e| matches!(e.dir, Dir::Up | Dir::Down))
-            .unwrap_or(false);
-        draw_epr_source(&p, tile_rect(sx, sy), vert, sim.frame, 255);
-        for (i, e) in lvl.emitters.iter().enumerate() {
-            if (e.gx, e.gy) != (sx, sy) {
-                let lbl = (b'A' + i as u8) as char;
-                draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, e.pol, false, sim.frame, 255);
-            }
-        }
-    } else {
-        for (i, e) in lvl.emitters.iter().enumerate() {
-            let lbl = (b'A' + i as u8) as char;
-            draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, e.pol, lvl.mode == TargetMode::QkdBb84, sim.frame, 255);
-        }
-    }
-    if let Some((a_pos, b_pos)) = lvl.e91_targets {
-        draw_target(&p, tile_rect(a_pos.0, a_pos.1), lvl.mode, Some("ALICE RX"), sim.level_complete, 255);
-        draw_target(&p, tile_rect(b_pos.0, b_pos.1), lvl.mode, Some("BOB RX"), sim.level_complete, 255);
-    } else if sim.sandbox_mode && lvl.mode == TargetMode::QkdE91 {
-        if let Some((ax, ay)) = sim.sandbox_bp.e91_alice {
-            draw_target(&p, tile_rect(ax, ay), TargetMode::QkdE91, Some("ALICE RX"), sim.level_complete, 255);
-        }
-        if let Some((bx, by)) = sim.sandbox_bp.e91_bob {
-            draw_target(&p, tile_rect(bx, by), TargetMode::QkdE91, Some("BOB RX"), sim.level_complete, 255);
-        }
-    } else if lvl.target.0 >= 0 && lvl.target.1 >= 0 {
-        let lbl = if lvl.mode == TargetMode::QkdBb84 { Some("BOB RX") } else { None };
-        draw_target(&p, tile_rect(lvl.target.0, lvl.target.1), lvl.mode, lbl, sim.level_complete, 255);
-    }
-
-    // 5. Photons & tapered laser trails
-    let mut rng = rand::thread_rng();
-    for ph in &sim.photons {
-        if ph.trail.len() > 1 {
-            let n = ph.trail.len() as f32;
-            for i in 1..ph.trail.len() {
-                let (x1, y1, wl) = ph.trail[i - 1];
-                let (x2, y2, _) = ph.trail[i];
-                let col = if wl == 637 {
-                    ACCENT_ORANGE
-                } else if wl == 780 {
-                    ACCENT_RED
-                } else if ph.pid == "P" {
-                    ACCENT_GREEN
-                } else if ph.pid == "H" {
-                    ACCENT_TEAL
-                } else {
-                    ACCENT_CYAN
-                };
-                let width = (5.0 * (i as f32 / n) * scale).max(1.0);
-                p.line_segment([to_screen(x1, y1), to_screen(x2, y2)], Stroke::new(width, col));
-            }
-        }
-
-        if ph.alive {
-            let center = to_screen(ph.px, ph.py);
-            let pcol = if ph.wavelength == 637 {
-                ACCENT_ORANGE
-            } else if ph.wavelength == 780 {
-                ACCENT_RED
-            } else if ph.pid == "P" {
-                ACCENT_GREEN
-            } else if ph.pid == "H" {
-                ACCENT_TEAL
-            } else {
-                ACCENT_CYAN
+            let tile_rect = |gx: i32, gy: i32| -> Rect {
+                Rect::from_min_size(
+                    Pos2::new(origin.x + gx as f32 * tile_px, origin.y + gy as f32 * tile_px),
+                    Vec2::splat(tile_px),
+                )
             };
-            draw_radial_glow(&p, center, 24.0 * scale, pcol, 150);
+            let to_screen = |wx: f32, wy: f32| -> Pos2 {
+                Pos2::new(origin.x + wx * scale, origin.y + wy * scale)
+            };
 
-            if ph.noise > 10 {
-                for _ in 0..3 {
-                    let jx = center.x + rng.gen_range(-12.0..12.0) * scale;
-                    let jy = center.y + rng.gen_range(-12.0..12.0) * scale;
-                    p.circle_filled(Pos2::new(jx, jy), 2.2 * scale, ACCENT_AMBER);
+            // 1. Machined optical breadboard grid (only paint visible rows/cols for smooth large benches)
+            p.rect_filled(board_rect, 0.0, GRID_BG);
+            let min_c = (((visible_clip.left() - origin.x) / tile_px).floor() as i32).clamp(0, sim.bench_cols - 1);
+            let max_c = (((visible_clip.right() - origin.x) / tile_px).ceil() as i32).clamp(0, sim.bench_cols);
+            let min_r = (((visible_clip.top() - origin.y) / tile_px).floor() as i32).clamp(0, sim.bench_rows - 1);
+            let max_r = (((visible_clip.bottom() - origin.y) / tile_px).ceil() as i32).clamp(0, sim.bench_rows);
+            for r in min_r..max_r {
+                for c in min_c..max_c {
+                    let tr = tile_rect(c, r);
+                    p.rect_stroke(tr, 0.0, Stroke::new(1.0_f32, GRID_LINE), StrokeKind::Inside);
+                    for hx in [20.0f32, 60.0] {
+                        for hy in [20.0f32, 60.0] {
+                            p.circle_filled(Pos2::new(tr.left() + hx * scale, tr.top() + hy * scale), 2.0 * scale, BREADBOARD_HOLE);
+                        }
+                    }
+                }
+            }
+
+            // 2. Fixed & user-placed components
+            for (&(gx, gy), &tile) in &sim.grid {
+                let tr = tile_rect(gx, gy);
+                if !tr.intersects(visible_clip) {
+                    continue;
+                }
+                draw_tile_schematic(&p, tr, tile, sim.frame, 255);
+                if sim.colorblind_mode {
+                    let badge = match tile {
+                        Tile::Fiber => Some("1550"),
+                        Tile::LitFiber => Some("+N15"),
+                        Tile::PmdFiber => Some("PMD"),
+                        Tile::CdFiber => Some("CD"),
+                        Tile::Atmos => Some("ATM"),
+                        Tile::Eve => Some("EVE!"),
+                        _ => None,
+                    };
+                    if let Some(tag) = badge {
+                        let br = Rect::from_min_size(
+                            Pos2::new(tr.left() + 4.0 * scale, tr.top() + 4.0 * scale),
+                            Vec2::new((tag.len() as f32 * 5.8 + 6.0) * scale, 13.0 * scale),
+                        );
+                        p.rect_filled(br, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 225));
+                        p.rect_stroke(br, CornerRadius::same(2), Stroke::new(1.0_f32, TEXT_WHITE), StrokeKind::Inside);
+                        p.text(br.center(), Align2::CENTER_CENTER, tag, FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
+                    }
                 }
             }
 
-            if ph.pol == Pol::Cross {
-                let d = 9.0 * scale;
-                p.line_segment([Pos2::new(center.x - d, center.y - d), Pos2::new(center.x + d, center.y + d)], Stroke::new(2.0 * scale, ACCENT_PURPLE));
-                p.line_segment([Pos2::new(center.x - d, center.y + d), Pos2::new(center.x + d, center.y - d)], Stroke::new(2.0 * scale, ACCENT_PURPLE));
-            }
-            if ph.dispersion > 0 {
-                p.circle_stroke(center, (11.0 + ph.dispersion.min(3) as f32 * 2.0) * scale, Stroke::new(1.5 * scale, Color32::from_rgb(125, 211, 252)));
-            }
-
-            p.circle_filled(center, 7.0 * scale, pcol);
-            p.circle_filled(center, 3.0 * scale, TEXT_WHITE);
-
-            if sim.colorblind_mode {
-                let r = 12.0 * scale;
-                match ph.wavelength {
-                    780 => {
-                        // Upward triangle marker for 780nm
-                        let tri = vec![
-                            Pos2::new(center.x, center.y - r),
-                            Pos2::new(center.x + r * 0.9, center.y + r * 0.75),
-                            Pos2::new(center.x - r * 0.9, center.y + r * 0.75),
-                        ];
-                        p.add(egui::Shape::closed_line(tri, Stroke::new(2.0 * scale, TEXT_WHITE)));
+            // 2b. Live Alignment Laser Preview (subtle animated guide beam + timing readout when idle)
+            if sim.align_laser && !sim.sim_active {
+                let beams = sim.trace_alignment_beams();
+                let phase = (sim.frame as f32 * 0.7) % 16.0;
+                for beam in &beams {
+                    let mut prev_wl: Option<u32> = None;
+                    for seg in &beam.segments {
+                        let c1 = tile_rect(seg.x1, seg.y1).center();
+                        let c2 = tile_rect(seg.x2, seg.y2).center();
+                        let base_col = if beam.label == "H" {
+                            ACCENT_TEAL
+                        } else if beam.label == "P" {
+                            ACCENT_GREEN
+                        } else if seg.wavelength == 637 {
+                            ACCENT_ORANGE
+                        } else if seg.wavelength == 780 {
+                            ACCENT_RED
+                        } else {
+                            ACCENT_CYAN
+                        };
+                        let (dash_len, gap_len, width_mult) = if sim.colorblind_mode {
+                            match seg.wavelength {
+                                780 => (4.0, 4.0, 2.8),
+                                637 => (6.0, 9.0, 2.8),
+                                _ => (14.0, 5.0, 2.6),
+                            }
+                        } else {
+                            (8.0, 8.0, 2.2)
+                        };
+                        draw_dashed_segment(
+                            &p,
+                            c1,
+                            c2,
+                            with_alpha(base_col, if sim.colorblind_mode { 195 } else { 130 }),
+                            (width_mult * scale).max(1.2),
+                            dash_len * scale,
+                            gap_len * scale,
+                            phase * scale,
+                        );
+                        if sim.colorblind_mode && prev_wl != Some(seg.wavelength) {
+                            prev_wl = Some(seg.wavelength);
+                            let mid = Pos2::new((c1.x + c2.x) * 0.5, (c1.y + c2.y) * 0.5 - 10.0 * scale);
+                            let wtag = format!("{}", seg.wavelength);
+                            let tr_b = Rect::from_center_size(mid, Vec2::new(28.0 * scale, 12.0 * scale));
+                            p.rect_filled(tr_b, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 230));
+                            p.rect_stroke(tr_b, CornerRadius::same(2), Stroke::new(1.0_f32, base_col), StrokeKind::Inside);
+                            p.text(mid, Align2::CENTER_CENTER, wtag, FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
+                        }
                     }
-                    637 => {
-                        // Diamond marker for 637nm
-                        let dia = vec![
-                            Pos2::new(center.x, center.y - r),
-                            Pos2::new(center.x + r, center.y),
-                            Pos2::new(center.x, center.y + r),
-                            Pos2::new(center.x - r, center.y),
-                        ];
-                        p.add(egui::Shape::closed_line(dia, Stroke::new(2.0 * scale, TEXT_WHITE)));
-                    }
-                    _ => {
-                        // Crisp high-contrast circle ring for 1550nm
-                        p.circle_stroke(center, r, Stroke::new(2.0 * scale, TEXT_WHITE));
+                    if beam.blocked {
+                        let end_c = tile_rect(beam.end_pos.0, beam.end_pos.1).center();
+                        let d = 10.0 * scale;
+                        let pulse_a = (155.0 + 75.0 * (sim.frame as f32 * 0.14).sin()) as u8;
+                        let hcol = with_alpha(ACCENT_RED, pulse_a);
+                        p.line_segment([Pos2::new(end_c.x - d, end_c.y - d), Pos2::new(end_c.x + d, end_c.y + d)], Stroke::new(2.5 * scale, hcol));
+                        p.line_segment([Pos2::new(end_c.x - d, end_c.y + d), Pos2::new(end_c.x + d, end_c.y - d)], Stroke::new(2.5 * scale, hcol));
                     }
                 }
-                let badge_pos = Pos2::new(center.x, center.y - (r + 8.0 * scale));
-                let badge_r = Rect::from_center_size(badge_pos, Vec2::new(30.0 * scale, 12.0 * scale));
-                p.rect_filled(badge_r, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 235));
-                p.rect_stroke(badge_r, CornerRadius::same(2), Stroke::new(1.0_f32, TEXT_WHITE), StrokeKind::Inside);
-                p.text(badge_pos, Align2::CENTER_CENTER, format!("{}", ph.wavelength), FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
+                align_beams = Some(beams);
             }
-        }
-    }
 
-    // 6. Shockwaves & Particles
-    for sw in &sim.shockwaves {
-        let prog = 1.0 - (sw.life as f32 / sw.max_life as f32);
-        let r = (8.0 + prog * sw.max_r) * scale;
-        let alpha = (200.0 * (1.0 - prog)).clamp(0.0, 255.0) as u8;
-        p.circle_stroke(to_screen(sw.x, sw.y), r, Stroke::new(2.0 * scale, with_alpha(sw.color, alpha)));
-    }
-    for pt in &sim.particles {
-        let alpha = (255.0 * (pt.life as f32 / pt.max_life as f32)).clamp(0.0, 255.0) as u8;
-        p.circle_filled(to_screen(pt.x, pt.y), pt.size * scale, with_alpha(pt.color, alpha));
-    }
+            // 3. Pointer interaction + hover ghost preview + precision reticle
+            let hover_tile = if !overlay_open {
+                resp.hover_pos()
+                    .filter(|pos| visible_clip.contains(*pos))
+                    .map(|pos| {
+                        let gx = ((pos.x - origin.x) / tile_px).floor() as i32;
+                        let gy = ((pos.y - origin.y) / tile_px).floor() as i32;
+                        (gx.clamp(0, sim.bench_cols - 1), gy.clamp(0, sim.bench_rows - 1))
+                    })
+            } else {
+                None
+            };
 
-    // 6b. Compact Alignment Laser Path-Length & Sync HUD pill (top-left of bench)
+            if let Some((hgx, hgy)) = hover_tile {
+                let shift_held = ui.input(|i| i.modifiers.shift);
+                if (resp.clicked_by(egui::PointerButton::Primary) && shift_held)
+                    || resp.clicked_by(egui::PointerButton::Middle)
+                {
+                    inspect_doc = doc_key_at(sim, (hgx, hgy));
+                } else if resp.clicked_by(egui::PointerButton::Primary) {
+                    sim.bench_primary_click(hgx, hgy);
+                } else if resp.clicked_by(egui::PointerButton::Secondary) {
+                    sim.remove_component(hgx, hgy);
+                }
+
+                let tr = tile_rect(hgx, hgy);
+                let draw_reticle = |p: &Painter, reticle_col: Color32| {
+                    let m = 3.0 * scale;
+                    let arm = 10.0 * scale;
+                    for (cx0, cy0, dx, dy) in [
+                        (tr.left() + m, tr.top() + m, arm, arm),
+                        (tr.right() - m, tr.top() + m, -arm, arm),
+                        (tr.left() + m, tr.bottom() - m, arm, -arm),
+                        (tr.right() - m, tr.bottom() - m, -arm, -arm),
+                    ] {
+                        p.line_segment([Pos2::new(cx0, cy0), Pos2::new(cx0 + dx, cy0)], Stroke::new(1.2_f32, reticle_col));
+                        p.line_segment([Pos2::new(cx0, cy0), Pos2::new(cx0, cy0 + dy)], Stroke::new(1.2_f32, reticle_col));
+                    }
+                    p.text(
+                        Pos2::new(tr.left() + 6.0 * scale, tr.top() + 5.0 * scale),
+                        Align2::LEFT_TOP,
+                        format!("{hgx},{hgy}"),
+                        FontId::proportional((10.0 * scale).max(8.0)),
+                        Color32::from_rgb(90, 130, 160),
+                    );
+                };
+
+                if sim.erase_mode {
+                    let can_erase = sim.sandbox_mode || sim.user_placed.contains(&(hgx, hgy));
+                    let ecol = if can_erase { ACCENT_RED } else { Color32::from_rgb(110, 68, 76) };
+                    draw_reticle(&p, ecol);
+                    if can_erase {
+                        let d = 14.0 * scale;
+                        let c = tr.center();
+                        p.rect_filled(tr.shrink(4.0 * scale), CornerRadius::same(4), Color32::from_rgba_unmultiplied(244, 63, 94, 42));
+                        p.line_segment([Pos2::new(c.x - d, c.y - d), Pos2::new(c.x + d, c.y + d)], Stroke::new(2.5 * scale, ACCENT_RED));
+                        p.line_segment([Pos2::new(c.x - d, c.y + d), Pos2::new(c.x + d, c.y - d)], Stroke::new(2.5 * scale, ACCENT_RED));
+                    }
+                } else if sim.sandbox_mode {
+                    match sim.sandbox_tool {
+                        SandboxTool::Tile(t) => draw_tile_schematic(&p, tr, t, sim.frame, 115),
+                        SandboxTool::EmitterIon => draw_emitter(&p, tr, '+', sim.sandbox_dir, 780, Pol::Plus, false, sim.frame, 120),
+                        SandboxTool::EmitterNv => draw_emitter(&p, tr, '+', sim.sandbox_dir, 637, Pol::Plus, false, sim.frame, 120),
+                        SandboxTool::EprSource => draw_epr_source(&p, tr, matches!(sim.sandbox_dir, Dir::Up | Dir::Down), sim.frame, 120),
+                        SandboxTool::DetectorSnspd => draw_target(&p, tr, TargetMode::Single, None, false, 120),
+                        SandboxTool::DetectorBsm => draw_target(&p, tr, TargetMode::Bsm, None, false, 120),
+                        SandboxTool::DetectorQpu => draw_target(&p, tr, TargetMode::Qpu, None, false, 120),
+                        SandboxTool::DetectorBobBb84 => draw_target(&p, tr, TargetMode::QkdBb84, Some("BOB RX"), false, 120),
+                        SandboxTool::DetectorAliceE91 => draw_target(&p, tr, TargetMode::QkdE91, Some("ALICE RX"), false, 120),
+                        SandboxTool::DetectorBobE91 => draw_target(&p, tr, TargetMode::QkdE91, Some("BOB RX"), false, 120),
+                    }
+                    draw_reticle(&p, ACCENT_PURPLE);
+                } else {
+                    let lvl = sim.current_level();
+                    if !sim.grid.contains_key(&(hgx, hgy)) && !lvl.is_emitter((hgx, hgy)) && !lvl.is_target((hgx, hgy)) {
+                        if let Some(sel) = sim.selected {
+                            if sim.inventory.get(&sel).copied().unwrap_or(0) > 0 {
+                                draw_tile_schematic(&p, tr, Tile::Placeable(sel), sim.frame, 115);
+                                draw_reticle(&p, ACCENT_CYAN);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Emitters & Target(s)
+            let lvl = sim.current_level();
+            if let Some((sx, sy)) = lvl.epr_source {
+                let vert = lvl
+                    .emitters
+                    .iter()
+                    .find(|e| (e.gx, e.gy) == (sx, sy))
+                    .map(|e| matches!(e.dir, Dir::Up | Dir::Down))
+                    .unwrap_or(false);
+                draw_epr_source(&p, tile_rect(sx, sy), vert, sim.frame, 255);
+                for (i, e) in lvl.emitters.iter().enumerate() {
+                    if (e.gx, e.gy) != (sx, sy) {
+                        let lbl = (b'A' + i as u8) as char;
+                        draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, e.pol, false, sim.frame, 255);
+                    }
+                }
+            } else {
+                for (i, e) in lvl.emitters.iter().enumerate() {
+                    let lbl = (b'A' + i as u8) as char;
+                    draw_emitter(&p, tile_rect(e.gx, e.gy), lbl, e.dir, e.wavelength, e.pol, lvl.mode == TargetMode::QkdBb84, sim.frame, 255);
+                }
+            }
+            if let Some((a_pos, b_pos)) = lvl.e91_targets {
+                draw_target(&p, tile_rect(a_pos.0, a_pos.1), lvl.mode, Some("ALICE RX"), sim.level_complete, 255);
+                draw_target(&p, tile_rect(b_pos.0, b_pos.1), lvl.mode, Some("BOB RX"), sim.level_complete, 255);
+            } else if sim.sandbox_mode && lvl.mode == TargetMode::QkdE91 {
+                if let Some((ax, ay)) = sim.sandbox_bp.e91_alice {
+                    draw_target(&p, tile_rect(ax, ay), TargetMode::QkdE91, Some("ALICE RX"), sim.level_complete, 255);
+                }
+                if let Some((bx, by)) = sim.sandbox_bp.e91_bob {
+                    draw_target(&p, tile_rect(bx, by), TargetMode::QkdE91, Some("BOB RX"), sim.level_complete, 255);
+                }
+            } else if lvl.target.0 >= 0 && lvl.target.1 >= 0 {
+                let lbl = if lvl.mode == TargetMode::QkdBb84 { Some("BOB RX") } else { None };
+                draw_target(&p, tile_rect(lvl.target.0, lvl.target.1), lvl.mode, lbl, sim.level_complete, 255);
+            }
+
+            // 5. Photons & tapered laser trails
+            let mut rng = rand::thread_rng();
+            for ph in &sim.photons {
+                if ph.trail.len() > 1 {
+                    let n = ph.trail.len() as f32;
+                    for i in 1..ph.trail.len() {
+                        let (x1, y1, wl) = ph.trail[i - 1];
+                        let (x2, y2, _) = ph.trail[i];
+                        let col = if wl == 637 {
+                            ACCENT_ORANGE
+                        } else if wl == 780 {
+                            ACCENT_RED
+                        } else if ph.pid == "P" {
+                            ACCENT_GREEN
+                        } else if ph.pid == "H" {
+                            ACCENT_TEAL
+                        } else {
+                            ACCENT_CYAN
+                        };
+                        let width = (5.0 * (i as f32 / n) * scale).max(1.0);
+                        p.line_segment([to_screen(x1, y1), to_screen(x2, y2)], Stroke::new(width, col));
+                    }
+                }
+
+                if ph.alive {
+                    let center = to_screen(ph.px, ph.py);
+                    let pcol = if ph.wavelength == 637 {
+                        ACCENT_ORANGE
+                    } else if ph.wavelength == 780 {
+                        ACCENT_RED
+                    } else if ph.pid == "P" {
+                        ACCENT_GREEN
+                    } else if ph.pid == "H" {
+                        ACCENT_TEAL
+                    } else {
+                        ACCENT_CYAN
+                    };
+                    draw_radial_glow(&p, center, 24.0 * scale, pcol, 150);
+
+                    if ph.noise > 10 {
+                        for _ in 0..3 {
+                            let jx = center.x + rng.gen_range(-12.0..12.0) * scale;
+                            let jy = center.y + rng.gen_range(-12.0..12.0) * scale;
+                            p.circle_filled(Pos2::new(jx, jy), 2.2 * scale, ACCENT_AMBER);
+                        }
+                    }
+
+                    if ph.pol == Pol::Cross {
+                        let d = 9.0 * scale;
+                        p.line_segment([Pos2::new(center.x - d, center.y - d), Pos2::new(center.x + d, center.y + d)], Stroke::new(2.0 * scale, ACCENT_PURPLE));
+                        p.line_segment([Pos2::new(center.x - d, center.y + d), Pos2::new(center.x + d, center.y - d)], Stroke::new(2.0 * scale, ACCENT_PURPLE));
+                    }
+                    if ph.dispersion > 0 {
+                        p.circle_stroke(center, (11.0 + ph.dispersion.min(3) as f32 * 2.0) * scale, Stroke::new(1.5 * scale, Color32::from_rgb(125, 211, 252)));
+                    }
+
+                    p.circle_filled(center, 7.0 * scale, pcol);
+                    p.circle_filled(center, 3.0 * scale, TEXT_WHITE);
+
+                    if sim.colorblind_mode {
+                        let r = 12.0 * scale;
+                        match ph.wavelength {
+                            780 => {
+                                let tri = vec![
+                                    Pos2::new(center.x, center.y - r),
+                                    Pos2::new(center.x + r * 0.9, center.y + r * 0.75),
+                                    Pos2::new(center.x - r * 0.9, center.y + r * 0.75),
+                                ];
+                                p.add(egui::Shape::closed_line(tri, Stroke::new(2.0 * scale, TEXT_WHITE)));
+                            }
+                            637 => {
+                                let dia = vec![
+                                    Pos2::new(center.x, center.y - r),
+                                    Pos2::new(center.x + r, center.y),
+                                    Pos2::new(center.x, center.y + r),
+                                    Pos2::new(center.x - r, center.y),
+                                ];
+                                p.add(egui::Shape::closed_line(dia, Stroke::new(2.0 * scale, TEXT_WHITE)));
+                            }
+                            _ => {
+                                p.circle_stroke(center, r, Stroke::new(2.0 * scale, TEXT_WHITE));
+                            }
+                        }
+                        let badge_pos = Pos2::new(center.x, center.y - (r + 8.0 * scale));
+                        let badge_r = Rect::from_center_size(badge_pos, Vec2::new(30.0 * scale, 12.0 * scale));
+                        p.rect_filled(badge_r, CornerRadius::same(2), Color32::from_rgba_unmultiplied(10, 14, 22, 235));
+                        p.rect_stroke(badge_r, CornerRadius::same(2), Stroke::new(1.0_f32, TEXT_WHITE), StrokeKind::Inside);
+                        p.text(badge_pos, Align2::CENTER_CENTER, format!("{}", ph.wavelength), FontId::monospace((8.5 * scale).max(7.5)), TEXT_WHITE);
+                    }
+                }
+            }
+
+            // 6. Shockwaves & Particles
+            for sw in &sim.shockwaves {
+                let prog = 1.0 - (sw.life as f32 / sw.max_life as f32);
+                let r = (8.0 + prog * sw.max_r) * scale;
+                let alpha = (200.0 * (1.0 - prog)).clamp(0.0, 255.0) as u8;
+                p.circle_stroke(to_screen(sw.x, sw.y), r, Stroke::new(2.0 * scale, with_alpha(sw.color, alpha)));
+            }
+            for pt in &sim.particles {
+                let alpha = (255.0 * (pt.life as f32 / pt.max_life as f32)).clamp(0.0, 255.0) as u8;
+                p.circle_filled(to_screen(pt.x, pt.y), pt.size * scale, with_alpha(pt.color, alpha));
+            }
+
+            // 7. Interactive hover tooltip for photons (when active/paused) or hardware tiles
+            if !overlay_open {
+                if let Some(pos) = resp.hover_pos().filter(|pos| visible_clip.contains(*pos)) {
+                    let hovered_photon = sim.photons.iter().find(|ph| {
+                        ph.alive && to_screen(ph.px, ph.py).distance(pos) < 18.0 * scale
+                    });
+                    if let Some(ph) = hovered_photon {
+                        egui::show_tooltip_at_pointer(ui.ctx(), ui.layer_id(), egui::Id::new("photon_tip"), |ui| {
+                            ui.label(egui::RichText::new(format!("Photon {} ({}nm)", ph.pid, ph.wavelength)).strong().color(ACCENT_CYAN));
+                            let cd = if ph.dispersion > 0 { format!("  |  CD: {} (Needs DCF!)", ph.dispersion) } else { String::new() };
+                            ui.label(format!("Fidelity: {}%  |  Noise: {}  |  Pol: '{}'{}", ph.fidelity, ph.noise, ph.pol.as_str(), cd));
+                        });
+                    } else if let Some((hgx, hgy)) = hover_tile {
+                        if let Some(key) = doc_key_at(sim, (hgx, hgy)) {
+                            if let Some(doc) = hardware_doc(key) {
+                                egui::show_tooltip_at_pointer(ui.ctx(), ui.layer_id(), egui::Id::new("tile_hw_tip"), |ui| {
+                                    ui.set_max_width(300.0);
+                                    ui.label(egui::RichText::new(doc.title).strong().size(12.0).color(doc.color));
+                                    ui.label(egui::RichText::new(doc.rule).size(11.0).color(TEXT_WHITE));
+                                    let sub = if sim.sandbox_mode {
+                                        "R-Click: Erase • Shift+Click: Full Spec"
+                                    } else if sim.user_placed.contains(&(hgx, hgy)) {
+                                        "R-Click: Remove • Shift+Click: Full Spec"
+                                    } else {
+                                        "Shift+Click: Open Hardware Spec"
+                                    };
+                                    ui.label(egui::RichText::new(sub).size(10.0).color(TEXT_MUTED));
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+    // 6b. Pinned Alignment Laser Path-Length & Sync HUD pill (centered in non-scrolling top strip)
     if let Some(beams) = &align_beams {
         let primary: Vec<&AlignmentBeam> = beams.iter().filter(|b| b.label != "H" && b.label != "P").collect();
         if !primary.is_empty() {
@@ -880,60 +953,44 @@ pub fn draw_optical_bench(ui: &mut Ui, sim: &mut BenchSim, overlay_open: bool) -
                     parts.push("SYNC: 0ps OK".to_string());
                     pill_col = ACCENT_GREEN;
                 } else {
-                    parts.push(format!("Δt:{dt}ps{}", if pol_ok { "" } else { " POL!" }));
+                    parts.push(format!("dt:{dt}ps{}", if pol_ok { "" } else { " POL!" }));
                     pill_col = ACCENT_AMBER;
                 }
             }
             let hud_txt = format!("ALIGN  {}", parts.join("  •  "));
-            let hud_font = FontId::monospace((10.5 * scale).clamp(9.0, 11.5));
-            let galley = p_outer.layout_no_wrap(hud_txt, hud_font, pill_col);
+            let hud_font = FontId::monospace(10.5);
+            let galley = p_hud.layout_no_wrap(hud_txt, hud_font, pill_col);
             let pad = Vec2::new(10.0, 3.0);
             let box_sz = galley.size() + pad * 2.0;
             let hud_rect = Rect::from_min_size(
                 Pos2::new(
-                    board_rect.center().x - box_sz.x * 0.5,
-                    (board_rect.top() - box_sz.y - 4.0).max(outer_rect.top() + 3.0),
+                    (hud_bar_rect.center().x - box_sz.x * 0.5).max(hud_bar_rect.left() + 6.0),
+                    hud_bar_rect.center().y - box_sz.y * 0.5,
                 ),
                 box_sz,
             );
-            p_outer.rect_filled(hud_rect, CornerRadius::same(4), Color32::from_rgba_unmultiplied(12, 18, 28, 235));
-            p_outer.rect_stroke(hud_rect, CornerRadius::same(4), Stroke::new(1.0_f32, with_alpha(pill_col, 160)), StrokeKind::Inside);
-            p_outer.galley(hud_rect.left_top() + pad, galley, pill_col);
+            p_hud.rect_filled(hud_rect, CornerRadius::same(4), Color32::from_rgba_unmultiplied(12, 18, 28, 235));
+            p_hud.rect_stroke(hud_rect, CornerRadius::same(4), Stroke::new(1.0_f32, with_alpha(pill_col, 160)), StrokeKind::Inside);
+            p_hud.galley(hud_rect.left_top() + pad, galley, pill_col);
         }
     }
 
-    // 7. Interactive hover tooltip for photons (when active/paused) or hardware tiles
-    if !overlay_open {
-        if let Some(pos) = resp.hover_pos() {
-            let hovered_photon = sim.photons.iter().find(|ph| {
-                ph.alive && to_screen(ph.px, ph.py).distance(pos) < 18.0 * scale
-            });
-            if let Some(ph) = hovered_photon {
-                egui::show_tooltip_at_pointer(ui.ctx(), ui.layer_id(), egui::Id::new("photon_tip"), |ui| {
-                    ui.label(egui::RichText::new(format!("Photon {} ({}nm)", ph.pid, ph.wavelength)).strong().color(ACCENT_CYAN));
-                    let cd = if ph.dispersion > 0 { format!("  |  CD: {} (Needs DCF!)", ph.dispersion) } else { String::new() };
-                    ui.label(format!("Fidelity: {}%  |  Noise: {}  |  Pol: '{}'{}", ph.fidelity, ph.noise, ph.pol.as_str(), cd));
-                });
-            } else if let Some((hgx, hgy)) = hover_tile {
-                if let Some(key) = doc_key_at(sim, (hgx, hgy)) {
-                    if let Some(doc) = hardware_doc(key) {
-                        egui::show_tooltip_at_pointer(ui.ctx(), ui.layer_id(), egui::Id::new("tile_hw_tip"), |ui| {
-                            ui.set_max_width(300.0);
-                            ui.label(egui::RichText::new(doc.title).strong().size(12.0).color(doc.color));
-                            ui.label(egui::RichText::new(doc.rule).size(11.0).color(TEXT_WHITE));
-                            let sub = if sim.sandbox_mode {
-                                "R-Click: Erase • Shift+Click: Full Spec"
-                            } else if sim.user_placed.contains(&(hgx, hgy)) {
-                                "R-Click: Remove • Shift+Click: Full Spec"
-                            } else {
-                                "Shift+Click: Open Hardware Spec"
-                            };
-                            ui.label(egui::RichText::new(sub).size(10.0).color(TEXT_MUTED));
-                        });
-                    }
-                }
-            }
-        }
+    // Subtle right-side grid size badge whenever expanded beyond default 10x6 or scrollable
+    let scrollable = board_size.x > avail.x || board_size.y > scroll_avail_h;
+    if sim.bench_cols > GRID_COLS || sim.bench_rows > GRID_ROWS || scrollable {
+        let gtxt = if scrollable {
+            format!("GRID {}x{} (SCROLL)", sim.bench_cols, sim.bench_rows)
+        } else {
+            format!("GRID {}x{}", sim.bench_cols, sim.bench_rows)
+        };
+        let gcol = if scrollable { ACCENT_AMBER } else { TEXT_MUTED };
+        p_hud.text(
+            Pos2::new(hud_bar_rect.right() - 10.0, hud_bar_rect.center().y),
+            Align2::RIGHT_CENTER,
+            gtxt,
+            FontId::monospace(9.5),
+            gcol,
+        );
     }
 
     inspect_doc

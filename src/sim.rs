@@ -177,15 +177,23 @@ enum UndoSnapshot {
         user_placed: HashSet<(i32, i32)>,
         inventory: BTreeMap<Placeable, u32>,
     },
-    Sandbox(SandboxBlueprint),
+    Sandbox {
+        bp: SandboxBlueprint,
+        edge_placed: HashSet<(i32, i32)>,
+    },
 }
 
 pub struct BenchSim {
     pub levels: Vec<LevelDef>,
     pub level_idx: usize,
+    pub bench_cols: i32,
+    pub bench_rows: i32,
+    pub viewport_cols: i32,
+    pub viewport_rows: i32,
     pub sandbox_mode: bool,
     pub sandbox_bp: SandboxBlueprint,
     pub sandbox_level: LevelDef,
+    sandbox_edge_placed: HashSet<(i32, i32)>,
     pub sandbox_tab: SandboxTab,
     pub sandbox_tool: SandboxTool,
     pub sandbox_dir: Dir,
@@ -240,9 +248,14 @@ impl BenchSim {
         let mut s = Self {
             levels,
             level_idx: 0,
+            bench_cols: GRID_COLS,
+            bench_rows: GRID_ROWS,
+            viewport_cols: GRID_COLS,
+            viewport_rows: GRID_ROWS,
             sandbox_mode: false,
             sandbox_bp,
             sandbox_level,
+            sandbox_edge_placed: HashSet::new(),
             sandbox_tab: SandboxTab::Optics,
             sandbox_tool: SandboxTool::Tile(Tile::Placeable(Placeable::Qfc)),
             sandbox_dir: Dir::Right,
@@ -304,6 +317,70 @@ impl BenchSim {
         self.current_level().mode.is_qkd()
     }
 
+    /// Recompute active optical bench dimensions (`bench_cols` x `bench_rows`) from the
+    /// current viewport capacity (`view_cols` x `view_rows`) and placed components.
+    /// Resizing the window adds more fixed-size squares instead of scaling tiles larger;
+    /// placing a component on an edge square expands the bench by +1 beyond it so scrollbars appear.
+    pub fn sync_bench_bounds(&mut self, view_cols: i32, view_rows: i32) {
+        self.viewport_cols = view_cols.clamp(1, MAX_GRID_COLS);
+        self.viewport_rows = view_rows.clamp(1, MAX_GRID_ROWS);
+
+        let lvl = self.current_level();
+        let mut max_fixed_x = GRID_COLS - 1;
+        let mut max_fixed_y = GRID_ROWS - 1;
+        for e in &lvl.emitters {
+            max_fixed_x = max_fixed_x.max(e.gx);
+            max_fixed_y = max_fixed_y.max(e.gy);
+        }
+        if let Some((sx, sy)) = lvl.epr_source {
+            max_fixed_x = max_fixed_x.max(sx);
+            max_fixed_y = max_fixed_y.max(sy);
+        }
+        for (tx, ty) in lvl.target_coords() {
+            max_fixed_x = max_fixed_x.max(tx);
+            max_fixed_y = max_fixed_y.max(ty);
+        }
+        if self.sandbox_mode {
+            if let Some((ax, ay)) = self.sandbox_bp.e91_alice {
+                max_fixed_x = max_fixed_x.max(ax);
+                max_fixed_y = max_fixed_y.max(ay);
+            }
+            if let Some((bx, by)) = self.sandbox_bp.e91_bob {
+                max_fixed_x = max_fixed_x.max(bx);
+                max_fixed_y = max_fixed_y.max(by);
+            }
+        }
+        for &(x, y) in self.grid.keys() {
+            max_fixed_x = max_fixed_x.max(x);
+            max_fixed_y = max_fixed_y.max(y);
+        }
+
+        let placed_set = if self.sandbox_mode {
+            &self.sandbox_edge_placed
+        } else {
+            &self.user_placed
+        };
+        let max_edge_x = placed_set.iter().map(|&(x, _)| x).max();
+        let max_edge_y = placed_set.iter().map(|&(_, y)| y).max();
+
+        let base_cols = self.viewport_cols.max(GRID_COLS).max(max_fixed_x + 1);
+        let base_rows = self.viewport_rows.max(GRID_ROWS).max(max_fixed_y + 1);
+
+        let need_cols = match max_edge_x {
+            Some(mx) if mx >= base_cols - 1 => mx + 2,
+            Some(mx) => mx + 1,
+            None => 0,
+        };
+        let need_rows = match max_edge_y {
+            Some(my) if my >= base_rows - 1 => my + 2,
+            Some(my) => my + 1,
+            None => 0,
+        };
+
+        self.bench_cols = base_cols.max(need_cols).clamp(GRID_COLS, MAX_GRID_COLS);
+        self.bench_rows = base_rows.max(need_rows).clamp(GRID_ROWS, MAX_GRID_ROWS);
+    }
+
     pub fn enter_sandbox(&mut self) {
         self.sandbox_mode = true;
         self.undo_stack.clear();
@@ -323,6 +400,7 @@ impl BenchSim {
             self.push_undo();
         }
         self.sandbox_bp = bp;
+        self.sandbox_edge_placed.clear();
         if self.sandbox_mode {
             self.sync_sandbox_from_bp();
         } else {
@@ -333,6 +411,7 @@ impl BenchSim {
 
     pub fn clear_sandbox(&mut self) {
         self.push_undo();
+        self.sandbox_edge_placed.clear();
         self.sandbox_bp = SandboxBlueprint {
             version: 1,
             name: "Blank Breadboard".to_string(),
@@ -364,7 +443,10 @@ impl BenchSim {
 
     fn capture_snapshot(&self) -> UndoSnapshot {
         if self.sandbox_mode {
-            UndoSnapshot::Sandbox(self.sandbox_bp.clone())
+            UndoSnapshot::Sandbox {
+                bp: self.sandbox_bp.clone(),
+                edge_placed: self.sandbox_edge_placed.clone(),
+            }
         } else {
             UndoSnapshot::Campaign {
                 grid: self.grid.clone(),
@@ -386,10 +468,12 @@ impl BenchSim {
                         .into_iter()
                         .find(|k| self.inventory.get(k).copied().unwrap_or(0) > 0);
                 }
+                self.sync_bench_bounds(self.viewport_cols, self.viewport_rows);
                 self.reset_sim_keep_grid();
             }
-            UndoSnapshot::Sandbox(bp) => {
+            UndoSnapshot::Sandbox { bp, edge_placed } => {
                 self.sandbox_bp = bp;
+                self.sandbox_edge_placed = edge_placed;
                 self.sync_sandbox_from_bp();
             }
         }
@@ -463,11 +547,12 @@ impl BenchSim {
             let mut segments = Vec::new();
             let mut visited: HashSet<(i32, i32, Dir)> = HashSet::new();
 
-            for _ in 0..48 {
+            let max_steps = ((self.bench_cols + self.bench_rows) * 2).max(64) as usize;
+            for _ in 0..max_steps {
                 let (dx, dy) = dir.vec();
                 let nx = x + dx;
                 let ny = y + dy;
-                if !(0..GRID_COLS).contains(&nx) || !(0..GRID_ROWS).contains(&ny) {
+                if !(0..self.bench_cols).contains(&nx) || !(0..self.bench_rows).contains(&ny) {
                     break;
                 }
                 segments.push(AlignmentSegment { x1: x, y1: y, x2: nx, y2: ny, wavelength: wl });
@@ -615,10 +700,12 @@ impl BenchSim {
         self.last_earned_stars = None;
         self.sim_active = false;
         self.paused = false;
+        self.sync_bench_bounds(self.viewport_cols, self.viewport_rows);
     }
 
     fn clear_sandbox_cell(&mut self, pos: (i32, i32)) -> bool {
         let mut changed = false;
+        self.sandbox_edge_placed.remove(&pos);
         let prev_tiles = self.sandbox_bp.tiles.len();
         self.sandbox_bp.tiles.retain(|&(x, y, _)| (x, y) != pos);
         if self.sandbox_bp.tiles.len() != prev_tiles {
@@ -651,7 +738,7 @@ impl BenchSim {
     }
 
     pub fn sandbox_place(&mut self, gx: i32, gy: i32) -> bool {
-        if gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS {
+        if gx < 0 || gx >= self.bench_cols || gy < 0 || gy >= self.bench_rows {
             return false;
         }
         self.push_undo();
@@ -776,13 +863,14 @@ impl BenchSim {
             }
         }
 
+        self.sandbox_edge_placed.insert(pos);
         self.sync_sandbox_from_bp();
         self.pending_sfx.push(SfxEvent::Place);
         true
     }
 
     pub fn sandbox_remove(&mut self, gx: i32, gy: i32) -> bool {
-        if gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS {
+        if gx < 0 || gx >= self.bench_cols || gy < 0 || gy >= self.bench_rows {
             return false;
         }
         let prev = self.capture_snapshot();
@@ -870,6 +958,7 @@ impl BenchSim {
         self.last_earned_stars = None;
         self.sim_active = false;
         self.paused = false;
+        self.sync_bench_bounds(self.viewport_cols, self.viewport_rows);
     }
 
     /// Primary pointer/touch action on the optical bench: erases when Erase Mode [X] is active,
@@ -887,7 +976,7 @@ impl BenchSim {
             return self.sandbox_place(gx, gy);
         }
         let pos = (gx, gy);
-        if gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS {
+        if gx < 0 || gx >= self.bench_cols || gy < 0 || gy >= self.bench_rows {
             return false;
         }
         let lvl = self.current_level();
@@ -912,6 +1001,7 @@ impl BenchSim {
                 self.selected = Some(next_c);
             }
         }
+        self.sync_bench_bounds(self.viewport_cols, self.viewport_rows);
         self.reset_sim_keep_grid();
         self.pending_sfx.push(SfxEvent::Place);
         true
@@ -931,6 +1021,7 @@ impl BenchSim {
             *self.inventory.entry(comp).or_insert(0) += 1;
             self.selected = Some(comp);
         }
+        self.sync_bench_bounds(self.viewport_cols, self.viewport_rows);
         self.reset_sim_keep_grid();
         self.pending_sfx.push(SfxEvent::Remove);
         true
@@ -1289,7 +1380,9 @@ impl BenchSim {
             self.photons[idx].trail.remove(0);
         }
 
-        if px < 0.0 || px >= BOARD_W || py < 0.0 || py >= BOARD_H {
+        let board_w = self.bench_cols as f32 * TILE_SIZE;
+        let board_h = self.bench_rows as f32 * TILE_SIZE;
+        if px < 0.0 || px >= board_w || py < 0.0 || py >= board_h {
             self.photons[idx].alive = false;
             self.photons[idx].record_telemetry(tick);
             let pair_id = self.photons[idx].qkd_pair_id;
@@ -2737,5 +2830,64 @@ mod tests {
         assert!(!sim.colorblind_mode);
         sim.colorblind_mode = true;
         assert!(sim.colorblind_mode);
+    }
+
+    #[test]
+    fn dynamic_bench_resize_and_edge_expansion() {
+        let mut sim = BenchSim::new();
+        sim.load_level(0);
+        // 1. Default 10x6 viewport fits exact 10x6 with no spurious expansion
+        sim.sync_bench_bounds(10, 6);
+        assert_eq!((sim.bench_cols, sim.bench_rows), (10, 6));
+
+        // 2. Resizing window larger adds more squares (16x10)
+        sim.sync_bench_bounds(16, 10);
+        assert_eq!((sim.bench_cols, sim.bench_rows), (16, 10));
+
+        // 3. Placing on right & bottom edge squares expands bench by +1 beyond edge (triggers scrollbars)
+        sim.selected = Some(Placeable::Qfc);
+        assert!(sim.place_component(15, 2));
+        assert_eq!(sim.bench_cols, 17);
+        assert_eq!(sim.bench_rows, 10);
+
+        sim.selected = Some(Placeable::Vbg);
+        assert!(sim.place_component(4, 9));
+        assert_eq!(sim.bench_cols, 17);
+        assert_eq!(sim.bench_rows, 11);
+
+        // 4. Shrinking window smaller preserves components placed beyond the smaller viewport
+        sim.sync_bench_bounds(8, 5);
+        assert_eq!(sim.bench_cols, 17);
+        assert_eq!(sim.bench_rows, 11);
+
+        // 5. Removing edge components shrinks bench cleanly back to viewport size
+        assert!(sim.remove_component(15, 2));
+        assert!(sim.remove_component(4, 9));
+        sim.sync_bench_bounds(16, 10);
+        assert_eq!((sim.bench_cols, sim.bench_rows), (16, 10));
+
+        // 6. Sandbox starter starts without edge scrollbars, expands on edge placement, and routes photons across wide bench
+        sim.enter_sandbox();
+        sim.sync_bench_bounds(14, 8);
+        assert_eq!((sim.bench_cols, sim.bench_rows), (14, 8));
+        sim.sandbox_tool = SandboxTool::DetectorSnspd;
+        assert!(sim.place_component(13, 2));
+        assert_eq!(sim.bench_cols, 15);
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Placeable(Placeable::Qfc));
+        assert!(sim.place_component(2, 2));
+        sim.sandbox_tool = SandboxTool::Tile(Tile::Placeable(Placeable::Vbg));
+        assert!(sim.place_component(3, 2));
+        sim.fire_photons();
+        for _ in 0..600 {
+            sim.step_frame();
+            if !sim.sim_active {
+                break;
+            }
+        }
+        assert_eq!(sim.sim_state, SimState::Locked);
+        // Wide Sandbox blueprint validates and round-trips through share URL
+        let url = sim.sandbox_bp.to_share_url().expect("wide share url");
+        let decoded = SandboxBlueprint::from_share_str(&url).expect("wide decode");
+        assert_eq!(decoded.target, Some((13, 2)));
     }
 }
