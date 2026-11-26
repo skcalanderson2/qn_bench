@@ -3,7 +3,7 @@
 ## Project Overview
 **QN Bench** is an educational 2D optical-bench puzzle game built in **Rust + `eframe`/`egui`** (targeting **WebAssembly**, **macOS Universal**, and **Windows x64**). It teaches both the conceptual physics and the physical hardware stack of quantum networking — single-photon transduction, Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, chromatic dispersion, dichroic WDM routing, entanglement distillation, multi-hop repeaters, Bennett et al. (1993) Quantum Teleportation, and end-to-end **BB84 / E91 QKD + FIPS-197 AES-256** cryptography.
 
-* **Current Shipped Version:** `v2.10.0` (legacy Python `v1.1.0` preserved on branch `python-v1`)
+* **Current Shipped Version:** `v2.10.1` (legacy Python `v1.1.0` preserved on branch `python-v1`)
 * **Repository:** `https://github.com/skcalanderson2/qn_bench`
 * **Play in Browser (WASM):** `https://skcalanderson2.github.io/qn_bench/play/`
 * **Download Site:** `https://skcalanderson2.github.io/qn_bench/`
@@ -24,7 +24,7 @@
 * `src/ui_modals.rs` — All 8 modal overlays rendered strictly on `egui::Order::Foreground` above `modal_backdrop` (`egui::Order::Middle`): `Level` Briefing (with 2-tier progressive opt-in hints + `▶ WATCH VIDEO GUIDE [V]`), `Comp` Hardware Spec, `UiHelp` Interface Manual (`[F1]` / `?`), `Glossary` Searchable Terminology & Component Guide (`[T]`), `QkdAes` Live Cryptography Inspector, `SandboxShare` (`#bp=` URL + JSON + Starter Labs), `LabReport` (20-level star table + Copy Markdown Report), and native `Update` modal (with pure-Rust rendered Markdown release notes).
 * `src/audio.rs` — 17 procedural PCM lab SFX. Native uses `rodio`; WebAssembly uses a `#[wasm_bindgen(inline_js = ...)]` Web Audio API bridge (capture-phase DOM unlock, `window.AudioContext || window.webkitAudioContext`, `new Float32Array` + `getChannelData(0).set()`, `AudioBuffer` caching, `ctx.resume().then(trigger)` + `src.start(0)`) verified working in both Chrome and Safari.
 * `src/video.rs` — Per-level YouTube Lab Video Guide registry (`VideoCatalog`, reading baked-in `docs/videos.json` + live async refresh from GitHub Pages so new videos activate with zero app rebuild) + cross-platform playback (embedded `youtube-nocookie.com` DOM modal overlay on WebAssembly; default browser via `webbrowser` on Desktop).
-* `src/updater.rs` — Native desktop background/manual GitHub Releases self-updater (verifies SHA-256 + Apple `TeamIdentifier` on macOS).
+* `src/updater.rs` — Native desktop startup + 30-minute periodic GitHub Releases self-updater (verifies SHA-256 + Apple `TeamIdentifier` on macOS); sidebar button stays hidden until an update is available, then lights up in bright amber-gold.
 * `src/app.rs` — `eframe::App` shell, fixed 60 Hz simulation accumulator, sidebar palette (`? UI HELP [F1]`, `GLOSSARY [T]`, `ERASE TOOL [X]`, `A11Y PATTERNS [C]`, Sandbox tabs, bottom-anchored `allocate_ui_with_layout` playback & navigation rows including `FIRE LASER [SPACE]`, `STEP [.]`, and `PAUSE/RESUME [P]`), keyboard shortcuts, `#bp=` URL hash listener, and `eframe::Storage` persistence (`PersistedState`).
 * `scripts/generate_lab_videos.py` — Automated 1080p 30fps YouTube Conceptual Lab Guide generator using Pillow + `ffmpeg` + Microsoft Edge Neural TTS (`edge-tts`, `en-US-AndrewNeural`) + synced `.srt` captions. Outputs to gitignored `videos/`.
 * `docs/` — GitHub Pages download site (`docs/index.html`), live video manifest (`docs/videos.json`), and Retina Rust screenshots (`docs/images/`).

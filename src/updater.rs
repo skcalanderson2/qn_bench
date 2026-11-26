@@ -12,7 +12,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+/// Background periodic update check interval (30 minutes — well within GitHub API limits).
+pub const PERIODIC_CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateState {
@@ -31,6 +34,18 @@ impl UpdateState {
         matches!(
             self,
             UpdateState::Checking
+                | UpdateState::Downloading
+                | UpdateState::Verifying
+                | UpdateState::Installing
+        )
+    }
+
+    /// The sidebar update button stays hidden unless a newer release is available
+    /// or an update download/install is currently in progress.
+    pub fn should_show_button(self) -> bool {
+        matches!(
+            self,
+            UpdateState::Available
                 | UpdateState::Downloading
                 | UpdateState::Verifying
                 | UpdateState::Installing
@@ -55,7 +70,6 @@ pub struct UpdateSnapshot {
     pub status_text: String,
     pub progress: f32,
     pub release_info: Option<ReleaseInfo>,
-    pub has_unseen_update: bool,
     pub ready_to_quit: bool,
     pub can_self_install: bool,
 }
@@ -123,9 +137,9 @@ struct Inner {
     status_text: String,
     progress: f32,
     release_info: Option<ReleaseInfo>,
-    has_unseen_update: bool,
     ready_to_quit: bool,
     install_target: Option<PathBuf>,
+    last_check: Option<Instant>,
 }
 
 pub struct UpdateManager {
@@ -141,11 +155,30 @@ impl UpdateManager {
                 status_text: String::new(),
                 progress: 0.0,
                 release_info: None,
-                has_unseen_update: false,
                 ready_to_quit: false,
                 install_target: get_install_target(),
+                last_check: None,
             })),
             cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Trigger a silent background check if enough time (`PERIODIC_CHECK_INTERVAL`) has
+    /// elapsed since the previous check and no update is already pending or in progress.
+    pub fn maybe_periodic_check(&self) {
+        let should_check = {
+            let g = self.inner.lock().unwrap();
+            if g.state.is_busy() || g.state == UpdateState::Available {
+                false
+            } else {
+                match g.last_check {
+                    None => true,
+                    Some(t) => t.elapsed() >= PERIODIC_CHECK_INTERVAL,
+                }
+            }
+        };
+        if should_check {
+            self.check_for_updates(true);
         }
     }
 
@@ -156,14 +189,9 @@ impl UpdateManager {
             status_text: g.status_text.clone(),
             progress: g.progress,
             release_info: g.release_info.clone(),
-            has_unseen_update: g.has_unseen_update,
             ready_to_quit: g.ready_to_quit,
             can_self_install: g.install_target.is_some(),
         }
-    }
-
-    pub fn mark_seen(&self) {
-        self.inner.lock().unwrap().has_unseen_update = false;
     }
 
     pub fn cancel_download(&self) {
@@ -188,6 +216,7 @@ impl UpdateManager {
             if g.state.is_busy() {
                 return;
             }
+            g.last_check = Some(Instant::now());
             g.state = UpdateState::Checking;
             g.status_text = "Checking GitHub Releases...".to_string();
             g.progress = 0.0;
@@ -273,7 +302,6 @@ impl UpdateManager {
             if !latest_ver.is_empty() && is_newer_version(&latest_ver, APP_VERSION) {
                 g.state = UpdateState::Available;
                 g.status_text = format!("Version {latest_ver} is available (installed: {APP_VERSION}).");
-                g.has_unseen_update = true;
             } else {
                 g.state = if silent { UpdateState::Idle } else { UpdateState::UpToDate };
                 g.status_text = format!("You are up to date (v{APP_VERSION}).");
@@ -664,4 +692,27 @@ fn find_exe(dir: &Path) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_button_hidden_until_available_and_version_compare() {
+        assert!(!UpdateState::Idle.should_show_button());
+        assert!(!UpdateState::Checking.should_show_button());
+        assert!(!UpdateState::UpToDate.should_show_button());
+        assert!(!UpdateState::Error.should_show_button());
+
+        assert!(UpdateState::Available.should_show_button());
+        assert!(UpdateState::Downloading.should_show_button());
+        assert!(UpdateState::Verifying.should_show_button());
+        assert!(UpdateState::Installing.should_show_button());
+
+        assert!(is_newer_version("v2.11.0", "2.10.0"));
+        assert!(!is_newer_version("v2.10.0", "2.10.0"));
+        assert!(!is_newer_version("2.9.9", "2.10.0"));
+        assert_eq!(PERIODIC_CHECK_INTERVAL, Duration::from_secs(30 * 60));
+    }
 }

@@ -7,9 +7,8 @@ use crate::render_bench::draw_optical_bench;
 use crate::render_scopes::draw_telemetry_deck;
 use crate::sim::{BenchSim, SfxEvent};
 use crate::ui_modals::draw_modal_overlay;
-use crate::version::APP_VERSION;
 #[cfg(target_arch = "wasm32")]
-use crate::version::DOWNLOAD_PAGE_URL;
+use crate::version::{APP_VERSION, DOWNLOAD_PAGE_URL};
 use crate::video::{is_web_video_open, open_lab_video, VideoCatalog};
 use egui::{Color32, CornerRadius, Key, RichText, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
@@ -377,7 +376,6 @@ impl QnBenchApp {
         #[cfg(not(target_arch = "wasm32"))]
         if update_u {
             self.sfx.play(SfxEvent::Select);
-            self.updater.mark_seen();
             let st = self.updater.snapshot().state;
             if matches!(st, UpdateState::Idle | UpdateState::UpToDate | UpdateState::Error) {
                 self.updater.check_for_updates(false);
@@ -443,17 +441,14 @@ impl eframe::App for QnBenchApp {
             }
         }
 
-        // Poll native updater for unseen update prompt or ready-to-quit relaunch
+        // Poll native updater periodically in the background and handle ready-to-quit relaunch
         #[cfg(not(target_arch = "wasm32"))]
         {
+            self.updater.maybe_periodic_check();
             let snap = self.updater.snapshot();
             if snap.ready_to_quit {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 return;
-            }
-            if snap.has_unseen_update && self.overlay == Overlay::None && !self.sim.sim_active {
-                self.updater.mark_seen();
-                self.overlay = Overlay::Update;
             }
         }
 
@@ -667,7 +662,12 @@ impl eframe::App for QnBenchApp {
                         ui.add_space(6.0);
                     }
 
-                    let cards_max_h = (ui.available_height() - 196.0).max(80.0);
+                    // Reserve space for bottom-anchored playback controls (plus bright update pill only when visible)
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let bottom_reserve = if self.updater.snapshot().state.should_show_button() { 202.0 } else { 166.0 };
+                    #[cfg(target_arch = "wasm32")]
+                    let bottom_reserve = 196.0;
+                    let cards_max_h = (ui.available_height() - bottom_reserve).max(80.0);
                     let tools: &[SandboxTool] = match self.sim.sandbox_tab {
                         SandboxTab::Optics => &SandboxTool::OPTICS,
                         SandboxTab::Channels => &SandboxTool::CHANNELS,
@@ -731,7 +731,12 @@ impl eframe::App for QnBenchApp {
                     ui.add_space(6.0);
 
                     // Component Cards (scrollable on smaller windows so bottom buttons never clip)
-                    let cards_max_h = (ui.available_height() - 196.0).max(80.0);
+                    // Reserve space for bottom-anchored playback controls (plus bright update pill only when visible)
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let bottom_reserve = if self.updater.snapshot().state.should_show_button() { 202.0 } else { 166.0 };
+                    #[cfg(target_arch = "wasm32")]
+                    let bottom_reserve = 196.0;
+                    let cards_max_h = (ui.available_height() - bottom_reserve).max(80.0);
                     egui::ScrollArea::vertical()
                         .id_salt("comp_cards_scroll")
                         .max_height(cards_max_h)
@@ -962,33 +967,47 @@ impl eframe::App for QnBenchApp {
                             .color(TEXT_MUTED),
                     );
 
-                    // Version / Self-Update Pill (Native) or Web Edition Badge (WASM)
+                    // Bright Self-Update Button (Native: hidden unless an update is available or installing)
                     #[cfg(not(target_arch = "wasm32"))]
                     {
                         let snap = self.updater.snapshot();
-                        let (u_bg, u_bd, u_fg, u_lbl) = match snap.state {
-                            UpdateState::Available => {
-                                let v = snap.release_info.as_ref().map(|r| r.version.as_str()).unwrap_or("");
-                                (Color32::from_rgb(16, 48, 38), ACCENT_GREEN, ACCENT_GREEN, format!("UPDATE AVAILABLE: v{v} • CLICK"))
+                        if snap.state.should_show_button() {
+                            let v = snap
+                                .release_info
+                                .as_ref()
+                                .map(|r| r.version.as_str())
+                                .unwrap_or("");
+                            let (u_bg, u_bd, u_fg, u_lbl) = match snap.state {
+                                UpdateState::Available => (
+                                    Color32::from_rgb(250, 204, 21), // Bright vivid amber-gold
+                                    Color32::from_rgb(254, 249, 195),
+                                    BG_DARK,
+                                    format!("UPDATE AVAILABLE: v{v}  •  INSTALL"),
+                                ),
+                                _ => (
+                                    ACCENT_CYAN,
+                                    Color32::from_rgb(207, 250, 254),
+                                    BG_DARK,
+                                    if v.is_empty() {
+                                        "UPDATING APP...".to_string()
+                                    } else {
+                                        format!("UPDATING TO v{v}...")
+                                    },
+                                ),
+                            };
+                            let u_btn = egui::Button::new(RichText::new(u_lbl).strong().size(11.0).color(u_fg))
+                                .fill(u_bg)
+                                .stroke(Stroke::new(1.5_f32, u_bd))
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(ui.available_width(), 28.0));
+                            if ui
+                                .add(u_btn)
+                                .on_hover_text("A new version of QN Bench is ready — click to view release notes & install [U]")
+                                .clicked()
+                            {
+                                self.sfx.play(SfxEvent::Select);
+                                self.overlay = Overlay::Update;
                             }
-                            UpdateState::Checking => (Color32::from_rgb(48, 38, 18), ACCENT_AMBER, ACCENT_AMBER, "CHECKING UPDATES...".to_string()),
-                            UpdateState::Downloading | UpdateState::Verifying | UpdateState::Installing => {
-                                (Color32::from_rgb(48, 38, 18), ACCENT_AMBER, ACCENT_AMBER, "UPDATING APP...".to_string())
-                            }
-                            _ => (Color32::from_rgb(20, 27, 39), GRID_LINE, TEXT_MUTED, format!("v{APP_VERSION}  •  CHECK FOR UPDATES")),
-                        };
-                        let u_btn = egui::Button::new(RichText::new(u_lbl).strong().size(10.5).color(u_fg))
-                            .fill(u_bg)
-                            .stroke(Stroke::new(1.0_f32, u_bd))
-                            .corner_radius(CornerRadius::same(5))
-                            .min_size(Vec2::new(ui.available_width(), 25.0));
-                        if ui.add(u_btn).clicked() {
-                            self.sfx.play(SfxEvent::Select);
-                            self.updater.mark_seen();
-                            if matches!(snap.state, UpdateState::Idle | UpdateState::UpToDate | UpdateState::Error) {
-                                self.updater.check_for_updates(false);
-                            }
-                            self.overlay = Overlay::Update;
                         }
                     }
 
