@@ -1102,11 +1102,16 @@ impl BenchSim {
         }
     }
 
-    /// Single-step frame debugger: advances the active simulation by exactly 1 frame (+5ps)
+    /// Single-step frame debugger: advances the simulation by exactly 1 frame (+5ps)
     /// and leaves it paused so students can inspect photon states tile by tile.
+    /// If the bench is not yet active (READY / FAULT / LOCKED), automatically fires
+    /// photons first and steps 1 frame into paused inspection mode.
     pub fn step_one_paused_frame(&mut self) {
         if !self.sim_active {
-            return;
+            self.fire_photons();
+            if !self.sim_active {
+                return;
+            }
         }
         self.paused = false;
         self.step_frame();
@@ -2628,12 +2633,10 @@ mod tests {
         sim.selected = Some(Vbg);
         assert!(sim.place_component(3, 2));
 
-        // 1. Single-Step (+5ps) Frame Debugger advances exactly 1 tick and stays paused
-        sim.fire_photons();
-        assert!(sim.sim_active);
-        assert!(!sim.paused);
-        assert_eq!(sim.tick, 0);
+        // 1. Single-Step (+5ps) Frame Debugger auto-fires from READY and advances 1 tick paused
+        assert!(!sim.sim_active);
         sim.step_one_paused_frame();
+        assert!(sim.sim_active);
         assert_eq!(sim.tick, 1);
         assert!(sim.paused);
         sim.step_one_paused_frame();

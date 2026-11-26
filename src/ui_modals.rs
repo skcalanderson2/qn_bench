@@ -1,7 +1,12 @@
-//! Modal overlays: Level Briefing, Hardware Specification (?), Interactive QKD & AES-256 Inspector,
-//! and Native Software Update modal.
+//! Modal overlays: Level Briefing, Hardware Specification (?), UI Help Guide,
+//! Quantum Terminology & Component Glossary, Interactive QKD & AES-256 Inspector,
+//! Sandbox Share, Lab Report, and Native Software Update modal.
 
-use crate::levels::hardware_doc;
+use crate::glossary::{
+    hardware_doc_badge, hardware_doc_tab, matches_search, GlossaryState, GlossaryTab,
+    GLOSSARY_TERMS,
+};
+use crate::levels::{hardware_doc, HARDWARE_DOCS};
 use crate::model::*;
 use crate::qkd::{hex_upper, QkdVerdict};
 use crate::render_bench::draw_tile_schematic;
@@ -45,6 +50,7 @@ pub fn draw_modal_overlay(
     overlay: &mut Overlay,
     sim: &mut BenchSim,
     videos: &VideoCatalog,
+    glossary: &mut GlossaryState,
     #[cfg(not(target_arch = "wasm32"))] updater: &UpdateManager,
 ) {
     if *overlay == Overlay::None {
@@ -255,6 +261,487 @@ pub fn draw_modal_overlay(
                     *overlay = Overlay::None;
                     sim.pending_sfx.push(SfxEvent::Select);
                 }
+            }
+        }
+        Overlay::UiHelp => {
+            let mut close = false;
+            let mut open_glossary = false;
+            let scroll_h = (screen.height() - 210.0).clamp(220.0, 440.0);
+            egui::Window::new("ui_help_guide")
+                .order(egui::Order::Foreground)
+                .title_bar(false)
+                .resizable(false)
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .min_width(720.0f32.min(screen.width() - 28.0))
+                .max_width(720.0f32.min(screen.width() - 28.0))
+                .frame(modal_frame(ACCENT_CYAN))
+                .show(ctx, |ui| {
+                    ui.label(
+                        RichText::new("INTERFACE MANUAL  •  CONTROLS, PLAYBACK & TELEMETRY")
+                            .strong()
+                            .size(11.0)
+                            .color(ACCENT_CYAN),
+                    );
+                    ui.label(
+                        RichText::new("QN Bench UI Help Guide")
+                            .strong()
+                            .size(18.0)
+                            .color(TEXT_WHITE),
+                    );
+                    ui.separator();
+                    ui.add_space(6.0);
+
+                    egui::ScrollArea::vertical()
+                        .id_salt("ui_help_scroll")
+                        .max_height(scroll_h)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            help_card(
+                                ui,
+                                "1. OPTICAL BENCH & COMPONENT PLACEMENT",
+                                ACCENT_CYAN,
+                                &[
+                                    ("Place Optics:", "Click any component card in the right sidebar, then Left-Click (or tap) an empty breadboard tile."),
+                                    ("Remove / Refund:", "Right-Click any placed component to remove it. On touchscreens or trackpads, toggle ERASE TOOL [X] so normal taps erase."),
+                                    ("Inspect Hardware:", "Click the cyan '?' badge on any component card, or Shift+Click any tile on the bench to open its Physics & Bench Mechanic spec. Hover any tile or photon for live readouts."),
+                                    ("Alignment Laser:", "Toggle ALIGN [L] to preview live wavelength colors (780nm Red, 637nm Orange, 1550nm Cyan), fiber stops, mirror routing, polarization (+ / x), and exact path timing (ps) above the grid."),
+                                ],
+                            );
+
+                            help_card(
+                                ui,
+                                "2. PLAYBACK, PAUSE & SINGLE-STEP FRAME DEBUGGER",
+                                ACCENT_AMBER,
+                                &[
+                                    ("FIRE LASER [SPACE]:", "Launches single photon(s) or a 36-qubit QKD burst from all emitters on the bench."),
+                                    ("STEP [.]:", "Advances the simulation by exactly +5ps (1 frame) and pauses automatically. Clicking STEP while READY auto-fires and pauses at T+0005ps so you can inspect every tile transition frame by frame."),
+                                    ("PAUSE / RESUME [P]:", "Freezes photons mid-flight (both in the sidebar and telemetry bar '||' / '>') so you can read hover tooltips and oscilloscope traces."),
+                                    ("Speed & Reset:", "Use 0.5x / 1x / 2x in the telemetry header to adjust simulation speed; press UNDO / REDO (Cmd/Ctrl+Z) for up to 64 edits, or RESET [R] to clear the run."),
+                                ],
+                            );
+
+                            help_card(
+                                ui,
+                                "3. READING THE BOTTOM TELEMETRY DECK & OSCILLOSCOPES",
+                                ACCENT_GREEN,
+                                &[
+                                    ("Header & Level Pills:", "Top row shows active level title, REPORT star tally, playback speed/pause/STEP, T+ps clock, and link state (READY / ACTIVE / LOCKED / FAULT). Second row jumps across Levels 1-20 (green = solved, gold = 3-star optimal) and SANDBOX."),
+                                    ("Fidelity & Raman Scopes:", "Left scope tracks quantum state fidelity vs. dashed 60% (or 90% QPU) threshold. Center scope & LED bar track Raman noise (detectors latch if noise > 10)."),
+                                    ("Spectrum / HOM Dip:", "Right scope shows wavelength lock pills (1550nm / NOISE<=10 / FID) on SNSPD/QPU levels, or the Hong-Ou-Mandel Coincidence Dip (window <= 15ps) on BSM/Teleport levels."),
+                                    ("QKD & AES-256 Mode:", "Levels 12-14 & 16 switch scopes to QBER / Bell CHSH (QBER <= 11%, S > 2.0), Live Basis Sifting ('+' / 'x'), and the AES-256 Engine. Click INSPECT QKD & AES-256 [K] to encrypt live custom text."),
+                                ],
+                            );
+
+                            help_card(
+                                ui,
+                                "4. HINTS, VIDEO GUIDES, ACCESSIBILITY & SANDBOX",
+                                ACCENT_PURPLE,
+                                &[
+                                    ("Briefing, Hints & Videos:", "Click BRIEFING [H] for mission goals, HINT [I] for optional 2-tier spoiler-free nudges, and VIDEO [V] for the narrated YouTube conceptual lab guide."),
+                                    ("Colorblind / A11Y [C]:", "Adds distinct photon shapes, numeric wavelength tags (780 / 637 / 1550), and alignment-laser dash patterns for color-vision accessibility."),
+                                    ("Stars & Lab Report [G]:", "Earn 1* for solving, 2* for optimal optics (<= Par) OR zero hints, and 3* for both. Open REPORT [G] to copy a full Markdown Lab Report."),
+                                    ("Free-Build Sandbox [S]:", "Place unlimited optics, channels, detectors, and rotatable emitters (Q/E to aim). Open LABS / JSON to load starter labs, clone any level, or copy a clickable #bp= browser share URL."),
+                                ],
+                            );
+
+                            // Keyboard Shortcuts Reference Card
+                            egui::Frame::NONE
+                                .fill(Color32::from_rgb(12, 18, 28))
+                                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(42, 56, 76)))
+                                .corner_radius(CornerRadius::same(7))
+                                .inner_margin(egui::Margin::symmetric(12, 9))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.label(
+                                        RichText::new("5. KEYBOARD SHORTCUTS QUICK REFERENCE")
+                                            .strong()
+                                            .size(11.0)
+                                            .color(ACCENT_TEAL),
+                                    );
+                                    ui.add_space(5.0);
+                                    let left_keys = [
+                                        ("SPACE", "Fire laser / launch qubits"),
+                                        (".", "Step forward +5ps (auto-fires paused)"),
+                                        ("P", "Pause / resume active simulation"),
+                                        ("R", "Reset level or stop Sandbox beam"),
+                                        ("Cmd/Ctrl + Z", "Undo bench edit (Shift+Z Redo)"),
+                                        ("L", "Toggle Live Alignment Laser"),
+                                        ("X", "Toggle Touch / Tap Erase Tool"),
+                                        ("C", "Toggle A11Y Colorblind Patterns"),
+                                    ];
+                                    let right_keys = [
+                                        ("F1 or ?", "Open this UI Help Guide"),
+                                        ("T", "Open Terminology & Component Guide"),
+                                        ("H", "Open Level Briefing / Sandbox Share"),
+                                        ("I", "Reveal progressive Level Hint"),
+                                        ("V", "Watch YouTube Lab Video Guide"),
+                                        ("G", "Open Quantum Lab Report & Stars"),
+                                        ("K", "Inspect QKD & AES-256 (QKD levels)"),
+                                        ("S / Q,E / M", "Sandbox / Aim emitter / Mute SFX"),
+                                    ];
+                                    ui.columns(2, |cols| {
+                                        for (k, desc) in left_keys {
+                                            keybind_row(&mut cols[0], k, desc);
+                                        }
+                                        for (k, desc) in right_keys {
+                                            keybind_row(&mut cols[1], k, desc);
+                                        }
+                                    });
+                                });
+                        });
+
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        let gl_btn = egui::Button::new(
+                            RichText::new("OPEN TERMINOLOGY GLOSSARY  [T]")
+                                .strong()
+                                .size(12.0)
+                                .color(ACCENT_AMBER),
+                        )
+                        .fill(Color32::from_rgb(36, 28, 18))
+                        .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                        .corner_radius(CornerRadius::same(6))
+                        .min_size(Vec2::new(245.0, 34.0));
+                        if ui.add(gl_btn).clicked() {
+                            open_glossary = true;
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let cls = egui::Button::new(
+                                RichText::new("CLOSE  [ESC]")
+                                    .strong()
+                                    .size(12.5)
+                                    .color(TEXT_WHITE),
+                            )
+                            .fill(PANEL_BG)
+                            .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                            .corner_radius(CornerRadius::same(6))
+                            .min_size(Vec2::new(130.0, 34.0));
+                            if ui.add(cls).clicked() {
+                                close = true;
+                            }
+                        });
+                    });
+                });
+            if open_glossary {
+                *overlay = Overlay::Glossary;
+                sim.pending_sfx.push(SfxEvent::Select);
+            } else if close {
+                *overlay = Overlay::None;
+                sim.pending_sfx.push(SfxEvent::Select);
+            }
+        }
+        Overlay::Glossary => {
+            let mut close = false;
+            let mut open_help = false;
+            let scroll_h = (screen.height() - 260.0).clamp(210.0, 420.0);
+
+            // Compute filtered entries up front so we can display an accurate match badge
+            let show_hw = matches!(
+                glossary.tab,
+                GlossaryTab::All | GlossaryTab::Optics | GlossaryTab::ChannelsNodes
+            );
+            let show_terms = matches!(
+                glossary.tab,
+                GlossaryTab::All | GlossaryTab::QuantumTerms | GlossaryTab::QkdCrypto
+            );
+
+            let matched_hw: Vec<&HardwareDoc> = if show_hw {
+                HARDWARE_DOCS
+                    .iter()
+                    .filter(|doc| {
+                        let tab_ok = glossary.tab == GlossaryTab::All
+                            || hardware_doc_tab(doc.key) == glossary.tab;
+                        tab_ok
+                            && matches_search(
+                                &glossary.query,
+                                &[
+                                    doc.key,
+                                    hardware_doc_badge(doc.key),
+                                    doc.title,
+                                    doc.physics,
+                                    doc.rule,
+                                    doc.tip,
+                                ],
+                            )
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            let matched_terms: Vec<&crate::glossary::GlossaryTerm> = if show_terms {
+                GLOSSARY_TERMS
+                    .iter()
+                    .filter(|term| {
+                        let tab_ok =
+                            glossary.tab == GlossaryTab::All || term.category == glossary.tab;
+                        tab_ok
+                            && matches_search(
+                                &glossary.query,
+                                &[term.abbr, term.full_name, term.summary, term.in_bench],
+                            )
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            let total_matches = matched_hw.len() + matched_terms.len();
+
+            egui::Window::new("quantum_terminology_guide")
+                .order(egui::Order::Foreground)
+                .title_bar(false)
+                .resizable(false)
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .min_width(760.0f32.min(screen.width() - 28.0))
+                .max_width(760.0f32.min(screen.width() - 28.0))
+                .frame(modal_frame(ACCENT_AMBER))
+                .show(ctx, |ui| {
+                    ui.label(
+                        RichText::new("QUANTUM NETWORKING ENCYCLOPEDIA  •  COMPONENTS, ACRONYMS & TERMS")
+                            .strong()
+                            .size(11.0)
+                            .color(ACCENT_AMBER),
+                    );
+                    ui.label(
+                        RichText::new("Terminology & Hardware Reference Guide")
+                            .strong()
+                            .size(18.0)
+                            .color(TEXT_WHITE),
+                    );
+                    ui.separator();
+                    ui.add_space(6.0);
+
+                    // Search bar
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("SEARCH:").strong().size(11.0).color(TEXT_MUTED));
+                        let clear_w = if glossary.query.is_empty() { 0.0 } else { 64.0 };
+                        let search_w = (ui.available_width() - clear_w - 8.0).max(160.0);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut glossary.query)
+                                .hint_text("Filter abbreviations, components, or physics (e.g. QFC, HOM, QBER, PMD, CD, AES)...")
+                                .desired_width(search_w)
+                                .char_limit(64),
+                        );
+                        if !glossary.query.is_empty() {
+                            let clr = egui::Button::new(RichText::new("CLEAR").strong().size(10.5).color(ACCENT_AMBER))
+                                .fill(Color32::from_rgb(36, 28, 18))
+                                .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                                .min_size(Vec2::new(56.0, 24.0));
+                            if ui.add(clr).clicked() {
+                                glossary.query.clear();
+                                sim.pending_sfx.push(SfxEvent::Select);
+                            }
+                        }
+                    });
+                    ui.add_space(6.0);
+
+                    // Category Filter Tabs + Match Count
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 5.0;
+                        for tab in GlossaryTab::ALL_TABS {
+                            let active = glossary.tab == tab;
+                            let btn = egui::Button::new(
+                                RichText::new(tab.label())
+                                    .strong()
+                                    .size(10.5)
+                                    .color(if active { BG_DARK } else { TEXT_WHITE }),
+                            )
+                            .fill(if active { ACCENT_AMBER } else { PANEL_BG })
+                            .stroke(Stroke::new(
+                                1.0_f32,
+                                if active { ACCENT_AMBER } else { GRID_LINE },
+                            ))
+                            .corner_radius(CornerRadius::same(5))
+                            .min_size(Vec2::new(0.0, 24.0));
+                            if ui.add(btn).clicked() {
+                                glossary.tab = tab;
+                                sim.pending_sfx.push(SfxEvent::Select);
+                            }
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let lbl = if total_matches == 1 {
+                                "1 entry".to_string()
+                            } else {
+                                format!("{total_matches} entries")
+                            };
+                            ui.label(RichText::new(lbl).monospace().size(11.0).color(TEXT_MUTED));
+                        });
+                    });
+
+                    ui.add_space(8.0);
+
+                    // Scrollable Reference Entries
+                    egui::ScrollArea::vertical()
+                        .id_salt(("glossary_scroll", glossary.tab as u8))
+                        .max_height(scroll_h)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            if total_matches == 0 {
+                                egui::Frame::NONE
+                                    .fill(Color32::from_rgb(13, 19, 30))
+                                    .stroke(Stroke::new(1.0_f32, GRID_LINE))
+                                    .corner_radius(CornerRadius::same(7))
+                                    .inner_margin(egui::Margin::same(16))
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.label(
+                                            RichText::new("No matching terms or components found. Try clearing your search filter or switching to the ALL tab.")
+                                                .size(12.5)
+                                                .color(TEXT_MUTED),
+                                        );
+                                    });
+                            }
+
+                            if !matched_hw.is_empty() {
+                                if glossary.tab == GlossaryTab::All {
+                                    ui.label(
+                                        RichText::new(format!("OPTICAL BENCH HARDWARE & COMPONENTS ({})", matched_hw.len()))
+                                            .strong()
+                                            .size(11.0)
+                                            .color(ACCENT_CYAN),
+                                    );
+                                    ui.add_space(4.0);
+                                }
+                                for doc in &matched_hw {
+                                    let is_optic = hardware_doc_tab(doc.key) == GlossaryTab::Optics;
+                                    let cat_lbl = if is_optic { "PLACEABLE OPTIC" } else { "CHANNEL / NODE" };
+                                    let badge = hardware_doc_badge(doc.key);
+                                    egui::Frame::NONE
+                                        .fill(Color32::from_rgb(12, 18, 28))
+                                        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(38, 50, 68)))
+                                        .corner_radius(CornerRadius::same(7))
+                                        .inner_margin(egui::Margin::symmetric(10, 8))
+                                        .show(ui, |ui| {
+                                            ui.set_width(ui.available_width());
+                                            ui.horizontal_top(|ui| {
+                                                if let Some(tile) = tile_for_doc_key(doc.key) {
+                                                    let (r, _) = ui.allocate_exact_size(Vec2::splat(48.0), egui::Sense::hover());
+                                                    draw_tile_schematic(ui.painter(), r, tile, sim.frame, 255);
+                                                } else {
+                                                    let (r, _) = ui.allocate_exact_size(Vec2::splat(48.0), egui::Sense::hover());
+                                                    let p = ui.painter();
+                                                    p.rect_filled(r, CornerRadius::same(6), Color32::from_rgb(18, 26, 38));
+                                                    p.rect_stroke(r, CornerRadius::same(6), Stroke::new(1.5_f32, doc.color), egui::StrokeKind::Inside);
+                                                    p.text(
+                                                        r.center(),
+                                                        egui::Align2::CENTER_CENTER,
+                                                        badge,
+                                                        egui::FontId::proportional(9.5),
+                                                        doc.color,
+                                                    );
+                                                }
+                                                ui.add_space(4.0);
+                                                ui.vertical(|ui| {
+                                                    ui.horizontal_wrapped(|ui| {
+                                                        pill_badge(ui, badge, doc.color);
+                                                        ui.label(RichText::new(doc.title).strong().size(13.5).color(TEXT_WHITE));
+                                                        ui.label(RichText::new(format!("({cat_lbl})")).size(10.0).color(TEXT_MUTED));
+                                                    });
+                                                    ui.add_space(2.0);
+                                                    ui.label(RichText::new(doc.physics).size(12.0).color(Color32::from_rgb(206, 218, 234)));
+                                                    ui.add_space(2.0);
+                                                    ui.horizontal_wrapped(|ui| {
+                                                        ui.label(RichText::new("Bench Rule:").strong().size(11.5).color(ACCENT_AMBER));
+                                                        ui.label(RichText::new(doc.rule).size(11.5).color(TEXT_WHITE));
+                                                    });
+                                                    ui.horizontal_wrapped(|ui| {
+                                                        ui.label(RichText::new("Lab Tip:").strong().size(11.5).color(ACCENT_GREEN));
+                                                        ui.label(RichText::new(doc.tip).size(11.5).color(TEXT_MUTED));
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    ui.add_space(6.0);
+                                }
+                            }
+
+                            if !matched_terms.is_empty() {
+                                if glossary.tab == GlossaryTab::All {
+                                    ui.add_space(6.0);
+                                    ui.label(
+                                        RichText::new(format!("QUANTUM PHYSICS, ACRONYMS & CRYPTOGRAPHY TERMS ({})", matched_terms.len()))
+                                            .strong()
+                                            .size(11.0)
+                                            .color(ACCENT_AMBER),
+                                    );
+                                    ui.add_space(4.0);
+                                }
+                                for term in &matched_terms {
+                                    let cat_lbl = if term.category == GlossaryTab::QkdCrypto {
+                                        "QKD & CRYPTO"
+                                    } else {
+                                        "QUANTUM PHYSICS"
+                                    };
+                                    egui::Frame::NONE
+                                        .fill(Color32::from_rgb(12, 18, 28))
+                                        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(38, 50, 68)))
+                                        .corner_radius(CornerRadius::same(7))
+                                        .inner_margin(egui::Margin::symmetric(12, 8))
+                                        .show(ui, |ui| {
+                                            ui.set_width(ui.available_width());
+                                            ui.horizontal_wrapped(|ui| {
+                                                pill_badge(ui, term.abbr, term.color);
+                                                ui.label(RichText::new(term.full_name).strong().size(13.5).color(TEXT_WHITE));
+                                                ui.label(RichText::new(format!("({cat_lbl})")).size(10.0).color(TEXT_MUTED));
+                                            });
+                                            ui.add_space(3.0);
+                                            ui.label(RichText::new(term.summary).size(12.0).color(Color32::from_rgb(206, 218, 234)));
+                                            ui.add_space(2.0);
+                                            ui.horizontal_wrapped(|ui| {
+                                                ui.label(RichText::new("In QN Bench:").strong().size(11.5).color(ACCENT_CYAN));
+                                                ui.label(RichText::new(term.in_bench).size(11.5).color(TEXT_MUTED));
+                                            });
+                                        });
+                                    ui.add_space(6.0);
+                                }
+                            }
+                        });
+
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        let help_btn = egui::Button::new(
+                            RichText::new("? OPEN UI HELP GUIDE  [F1]")
+                                .strong()
+                                .size(12.0)
+                                .color(ACCENT_CYAN),
+                        )
+                        .fill(Color32::from_rgb(18, 34, 48))
+                        .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                        .corner_radius(CornerRadius::same(6))
+                        .min_size(Vec2::new(210.0, 34.0));
+                        if ui.add(help_btn).clicked() {
+                            open_help = true;
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let cls = egui::Button::new(
+                                RichText::new("CLOSE  [ESC]")
+                                    .strong()
+                                    .size(12.5)
+                                    .color(TEXT_WHITE),
+                            )
+                            .fill(PANEL_BG)
+                            .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                            .corner_radius(CornerRadius::same(6))
+                            .min_size(Vec2::new(130.0, 34.0));
+                            if ui.add(cls).clicked() {
+                                close = true;
+                            }
+                        });
+                    });
+                });
+
+            if open_help {
+                *overlay = Overlay::UiHelp;
+                sim.pending_sfx.push(SfxEvent::Select);
+            } else if close {
+                *overlay = Overlay::None;
+                sim.pending_sfx.push(SfxEvent::Select);
             }
         }
         Overlay::QkdAes => {
@@ -850,6 +1337,82 @@ fn spec_section(ui: &mut Ui, heading: &str, col: Color32, body: &str, body_col: 
     ui.label(RichText::new(heading).strong().size(11.0).color(col));
     ui.label(RichText::new(body).size(13.0).color(body_col));
     ui.add_space(10.0);
+}
+
+fn help_card(ui: &mut Ui, heading: &str, accent: Color32, items: &[(&str, &str)]) {
+    egui::Frame::NONE
+        .fill(Color32::from_rgb(12, 18, 28))
+        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(38, 50, 68)))
+        .corner_radius(CornerRadius::same(7))
+        .inner_margin(egui::Margin::symmetric(12, 9))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(heading).strong().size(11.0).color(accent));
+            ui.add_space(4.0);
+            for (lead, desc) in items {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.label(RichText::new("•").strong().size(12.0).color(accent));
+                    let mut job = egui::text::LayoutJob::default();
+                    job.append(
+                        lead,
+                        0.0,
+                        egui::TextFormat {
+                            font_id: egui::FontId::proportional(12.2),
+                            color: TEXT_WHITE,
+                            ..Default::default()
+                        },
+                    );
+                    job.append(
+                        " ",
+                        0.0,
+                        egui::TextFormat {
+                            font_id: egui::FontId::proportional(12.2),
+                            color: TEXT_MUTED,
+                            ..Default::default()
+                        },
+                    );
+                    job.append(
+                        desc,
+                        0.0,
+                        egui::TextFormat {
+                            font_id: egui::FontId::proportional(12.0),
+                            color: Color32::from_rgb(192, 206, 224),
+                            ..Default::default()
+                        },
+                    );
+                    ui.add(egui::Label::new(job).wrap());
+                });
+                ui.add_space(2.0);
+            }
+        });
+    ui.add_space(7.0);
+}
+
+fn keybind_row(ui: &mut Ui, key: &str, desc: &str) {
+    ui.horizontal(|ui| {
+        egui::Frame::NONE
+            .fill(Color32::from_rgb(20, 28, 42))
+            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(48, 62, 84)))
+            .corner_radius(CornerRadius::same(4))
+            .inner_margin(egui::Margin::symmetric(6, 2))
+            .show(ui, |ui| {
+                ui.label(RichText::new(key).monospace().strong().size(10.5).color(ACCENT_AMBER));
+            });
+        ui.label(RichText::new(desc).size(11.5).color(Color32::from_rgb(198, 210, 226)));
+    });
+    ui.add_space(3.0);
+}
+
+fn pill_badge(ui: &mut Ui, text: &str, color: Color32) {
+    egui::Frame::NONE
+        .fill(Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 28))
+        .stroke(Stroke::new(1.0_f32, color))
+        .corner_radius(CornerRadius::same(4))
+        .inner_margin(egui::Margin::symmetric(6, 1))
+        .show(ui, |ui| {
+            ui.label(RichText::new(text).monospace().strong().size(10.5).color(color));
+        });
 }
 
 fn draw_star_trio(ui: &mut Ui, earned: u8) {

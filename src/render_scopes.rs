@@ -81,34 +81,70 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim, has_video: bool) -> 
                     .color(TEXT_MUTED),
             );
 
-            // Single-Step (+5ps) Frame Debugger button
-            let step_enabled = sim.sim_active;
+            // Single-Step (+5ps) Frame Debugger button (always enabled; auto-fires paused if READY)
+            let step_active = sim.sim_active && sim.paused;
             let step_btn = egui::Button::new(
-                egui::RichText::new("+5ps")
+                egui::RichText::new("STEP")
                     .strong()
                     .size(9.5)
-                    .color(if step_enabled { ACCENT_CYAN } else { Color32::from_rgb(64, 76, 94) }),
+                    .color(if step_active { BG_DARK } else { ACCENT_CYAN }),
             )
-            .fill(if step_enabled && sim.paused { Color32::from_rgb(18, 42, 54) } else { Color32::from_rgb(20, 28, 40) })
-            .stroke(Stroke::new(1.0_f32, if step_enabled { ACCENT_CYAN } else { Color32::from_rgb(28, 34, 46) }))
-            .min_size(Vec2::new(34.0, 20.0));
+            .fill(if step_active { ACCENT_CYAN } else { Color32::from_rgb(18, 34, 48) })
+            .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+            .corner_radius(CornerRadius::same(4))
+            .min_size(Vec2::new(42.0, 20.0));
             if ui
-                .add_enabled(step_enabled, step_btn)
-                .on_hover_text("Single-step frame debugger (+5ps per click) [.]")
+                .add(step_btn)
+                .on_hover_text("Step forward +5ps (auto-fires paused if Ready) [.]")
                 .clicked()
             {
                 sim.step_one_paused_frame();
                 sim.pending_sfx.push(crate::sim::SfxEvent::Select);
             }
 
-            // Pause & Speed controls
-            let pause_txt = if sim.paused { "▶" } else { "⏸" };
-            let pause_btn = egui::Button::new(egui::RichText::new(pause_txt).size(10.5).color(if sim.paused { ACCENT_AMBER } else { TEXT_WHITE }))
-                .fill(if sim.paused { Color32::from_rgb(52, 40, 18) } else { Color32::from_rgb(20, 28, 40) })
-                .stroke(Stroke::new(1.0_f32, if sim.paused { ACCENT_AMBER } else { GRID_LINE }))
-                .min_size(Vec2::new(22.0, 20.0));
-            if ui.add(pause_btn).on_hover_text("Pause / Resume simulation [P]").clicked() && sim.sim_active {
-                sim.paused = !sim.paused;
+            // Play / Pause & Speed controls (ASCII-safe '>' and '||'; clicking '>' when READY fires)
+            let is_running = sim.sim_active && !sim.paused;
+            let pause_txt = if is_running { "||" } else { ">" };
+            let pause_col = if sim.sim_active && sim.paused {
+                ACCENT_AMBER
+            } else if is_running {
+                TEXT_WHITE
+            } else {
+                ACCENT_GREEN
+            };
+            let pause_bg = if sim.sim_active && sim.paused {
+                Color32::from_rgb(52, 40, 18)
+            } else if is_running {
+                Color32::from_rgb(20, 28, 40)
+            } else {
+                Color32::from_rgb(16, 40, 32)
+            };
+            let pause_bd = if sim.sim_active && sim.paused {
+                ACCENT_AMBER
+            } else if is_running {
+                GRID_LINE
+            } else {
+                ACCENT_GREEN
+            };
+            let pause_tip = if !sim.sim_active {
+                "Fire laser / Start playback [SPACE]"
+            } else if sim.paused {
+                "Resume simulation [P]"
+            } else {
+                "Pause simulation [P]"
+            };
+            let pause_btn = egui::Button::new(egui::RichText::new(pause_txt).strong().size(10.5).color(pause_col))
+                .fill(pause_bg)
+                .stroke(Stroke::new(1.0_f32, pause_bd))
+                .corner_radius(CornerRadius::same(4))
+                .min_size(Vec2::new(26.0, 20.0));
+            if ui.add(pause_btn).on_hover_text(pause_tip).clicked() {
+                if sim.sim_active {
+                    sim.paused = !sim.paused;
+                    sim.pending_sfx.push(crate::sim::SfxEvent::Select);
+                } else {
+                    sim.fire_photons();
+                }
             }
 
             let spd_label = if (sim.sim_speed - 0.5).abs() < 0.05 {

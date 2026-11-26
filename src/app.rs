@@ -1,6 +1,7 @@
 //! Main eframe::App implementation: sidebar, fixed-timestep loop, keyboard shortcuts, and persistence.
 
 use crate::audio::SoundEngine;
+use crate::glossary::GlossaryState;
 use crate::model::*;
 use crate::render_bench::draw_optical_bench;
 use crate::render_scopes::draw_telemetry_deck;
@@ -56,6 +57,7 @@ pub struct QnBenchApp {
     sim: BenchSim,
     sfx: SoundEngine,
     videos: VideoCatalog,
+    glossary: GlossaryState,
     overlay: Overlay,
     accum_dt: f64,
     #[cfg(target_arch = "wasm32")]
@@ -134,6 +136,7 @@ impl QnBenchApp {
             sim,
             sfx,
             videos: VideoCatalog::new(),
+            glossary: GlossaryState::default(),
             overlay: initial_overlay,
             accum_dt: 0.0,
             #[cfg(target_arch = "wasm32")]
@@ -192,19 +195,38 @@ impl QnBenchApp {
                 }
                 return;
             }
-            if !text_focused && matches!(self.overlay, Overlay::Level(_) | Overlay::Comp(_)) {
-                if let Overlay::Level(idx) = self.overlay {
-                    if ctx.input(|i| i.key_pressed(Key::V)) {
-                        if let Some(vid) = self.videos.id_for_level(idx) {
-                            open_lab_video(self.sim.levels[idx].title, vid);
-                            self.sfx.play(SfxEvent::Select);
-                            return;
+            if !text_focused {
+                if self.overlay == Overlay::UiHelp {
+                    if ctx.input(|i| i.key_pressed(Key::F1) || i.key_pressed(Key::Enter)) {
+                        self.overlay = Overlay::None;
+                        self.sfx.play(SfxEvent::Select);
+                        return;
+                    }
+                    if ctx.input(|i| !i.modifiers.command && !i.modifiers.ctrl && i.key_pressed(Key::T)) {
+                        self.overlay = Overlay::Glossary;
+                        self.sfx.play(SfxEvent::Select);
+                        return;
+                    }
+                } else if self.overlay == Overlay::Glossary {
+                    if ctx.input(|i| i.key_pressed(Key::F1)) {
+                        self.overlay = Overlay::UiHelp;
+                        self.sfx.play(SfxEvent::Select);
+                        return;
+                    }
+                } else if matches!(self.overlay, Overlay::Level(_) | Overlay::Comp(_)) {
+                    if let Overlay::Level(idx) = self.overlay {
+                        if ctx.input(|i| i.key_pressed(Key::V)) {
+                            if let Some(vid) = self.videos.id_for_level(idx) {
+                                open_lab_video(self.sim.levels[idx].title, vid);
+                                self.sfx.play(SfxEvent::Select);
+                                return;
+                            }
                         }
                     }
-                }
-                if ctx.input(|i| i.key_pressed(Key::Enter) || i.key_pressed(Key::Space) || i.key_pressed(Key::H)) {
-                    self.overlay = Overlay::None;
-                    self.sfx.play(SfxEvent::Select);
+                    if ctx.input(|i| i.key_pressed(Key::Enter) || i.key_pressed(Key::Space) || i.key_pressed(Key::H)) {
+                        self.overlay = Overlay::None;
+                        self.sfx.play(SfxEvent::Select);
+                    }
                 }
             }
             return;
@@ -214,7 +236,7 @@ impl QnBenchApp {
             return;
         }
 
-        let (fire, reset, pause, step_dot, help, hint_i, video_v, align_l, report_g, erase_x, a11y_c, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
+        let (fire, reset, pause, step_dot, ui_help_f1, glossary_t, help, hint_i, video_v, align_l, report_g, erase_x, a11y_c, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
             let mut jump = None;
             let num_keys = [
                 Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
@@ -239,6 +261,8 @@ impl QnBenchApp {
                 !cmd && i.key_pressed(Key::R),
                 i.key_pressed(Key::P),
                 i.key_pressed(Key::Period),
+                i.key_pressed(Key::F1) || (i.modifiers.shift && i.key_pressed(Key::Slash)),
+                !cmd && i.key_pressed(Key::T),
                 i.key_pressed(Key::H),
                 i.key_pressed(Key::I),
                 !cmd && i.key_pressed(Key::V),
@@ -265,7 +289,13 @@ impl QnBenchApp {
             self.sim.undo();
         } else if redo_k {
             self.sim.redo();
-        } else if step_dot && self.sim.sim_active {
+        } else if ui_help_f1 {
+            self.overlay = Overlay::UiHelp;
+            self.sfx.play(SfxEvent::Select);
+        } else if glossary_t {
+            self.overlay = Overlay::Glossary;
+            self.sfx.play(SfxEvent::Select);
+        } else if step_dot {
             self.sim.step_one_paused_frame();
             self.sfx.play(SfxEvent::Select);
         } else if report_g {
@@ -475,17 +505,64 @@ impl eframe::App for QnBenchApp {
                                 self.sfx.play(SfxEvent::Select);
                             }
                         } else {
-                            let i_btn = egui::Button::new(RichText::new("? INFO").strong().size(10.5).color(ACCENT_CYAN))
+                            let i_btn = egui::Button::new(RichText::new("BRIEFING").strong().size(10.5).color(ACCENT_CYAN))
                                 .fill(Color32::from_rgb(22, 34, 50))
                                 .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
                                 .corner_radius(CornerRadius::same(5))
-                                .min_size(Vec2::new(58.0, 24.0));
-                            if ui.add(i_btn).clicked() {
+                                .min_size(Vec2::new(66.0, 24.0));
+                            if ui
+                                .add(i_btn)
+                                .on_hover_text("Open Current Level Briefing & Hints [H]")
+                                .clicked()
+                            {
                                 self.overlay = Overlay::Level(self.sim.level_idx);
                                 self.sfx.play(SfxEvent::Select);
                             }
                         }
                     });
+                });
+
+                // Reference Guides Bar: UI HELP [F1] + GLOSSARY [T]
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    let half_w = (ui.available_width() - 6.0) * 0.5;
+                    let help_btn = egui::Button::new(
+                        RichText::new("? UI HELP  [F1]")
+                            .strong()
+                            .size(10.5)
+                            .color(ACCENT_CYAN),
+                    )
+                    .fill(Color32::from_rgb(18, 34, 48))
+                    .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                    .corner_radius(CornerRadius::same(5))
+                    .min_size(Vec2::new(half_w, 24.0));
+                    if ui
+                        .add(help_btn)
+                        .on_hover_text("Open QN Bench UI Help Guide & Controls Manual [F1 or ?]")
+                        .clicked()
+                    {
+                        self.overlay = Overlay::UiHelp;
+                        self.sfx.play(SfxEvent::Select);
+                    }
+
+                    let gl_btn = egui::Button::new(
+                        RichText::new("GLOSSARY  [T]")
+                            .strong()
+                            .size(10.5)
+                            .color(ACCENT_AMBER),
+                    )
+                    .fill(Color32::from_rgb(36, 28, 18))
+                    .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                    .corner_radius(CornerRadius::same(5))
+                    .min_size(Vec2::new(half_w, 24.0));
+                    if ui
+                        .add(gl_btn)
+                        .on_hover_text("Open Quantum Terminology, Abbreviations & Component Guide [T]")
+                        .clicked()
+                    {
+                        self.overlay = Overlay::Glossary;
+                        self.sfx.play(SfxEvent::Select);
+                    }
                 });
 
                 // Touch & Accessibility Mode Bar: ERASE [X] + A11Y COLORBLIND [C]
@@ -781,37 +858,103 @@ impl eframe::App for QnBenchApp {
                         },
                     );
 
-                    // Reset Level / Stop Beam button
-                    let reset_lbl = if self.sim.sandbox_mode { "RESET BEAM  [R]" } else { "RESET LEVEL  [R]" };
-                    let reset_btn = egui::Button::new(RichText::new(reset_lbl).strong().size(13.5).color(TEXT_WHITE))
-                        .fill(PANEL_BG)
-                        .stroke(Stroke::new(1.0_f32, GRID_LINE))
-                        .corner_radius(CornerRadius::same(6))
-                        .min_size(Vec2::new(ui.available_width(), 36.0));
-                    if ui.add(reset_btn).clicked() {
-                        self.sfx.play(SfxEvent::Select);
-                        if self.sim.sandbox_mode {
-                            self.sim.sync_sandbox_from_bp();
-                        } else {
-                            let cur = self.sim.level_idx;
-                            self.switch_level(cur, Some(false));
-                        }
-                    }
+                    // Playback Secondary Row: PAUSE/RESUME [P] + RESET [R]
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(row_w, 36.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            let active = self.sim.sim_active;
+                            let paused = self.sim.paused;
+                            let p_lbl = if active && paused { "RESUME [P]" } else { "PAUSE [P]" };
+                            let p_fg = if !active {
+                                TEXT_MUTED
+                            } else if paused {
+                                BG_DARK
+                            } else {
+                                ACCENT_AMBER
+                            };
+                            let p_bg = if !active {
+                                Color32::from_rgb(22, 28, 38)
+                            } else if paused {
+                                ACCENT_AMBER
+                            } else {
+                                Color32::from_rgb(42, 34, 18)
+                            };
+                            let p_bd = if active { ACCENT_AMBER } else { Color32::from_rgb(34, 42, 54) };
+                            let p_btn = egui::Button::new(RichText::new(p_lbl).strong().size(12.0).color(p_fg))
+                                .fill(p_bg)
+                                .stroke(Stroke::new(1.0_f32, p_bd))
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(112.0, 36.0));
+                            if ui
+                                .add_enabled(active, p_btn)
+                                .on_hover_text("Pause or resume active photon simulation [P]")
+                                .clicked()
+                            {
+                                self.sim.paused = !self.sim.paused;
+                                self.sfx.play(SfxEvent::Select);
+                            }
 
-                    // Fire Laser button
-                    let fire_btn = egui::Button::new(RichText::new("FIRE LASER  [SPACE]").strong().size(14.5).color(TEXT_WHITE))
-                        .fill(ACCENT_RED)
-                        .corner_radius(CornerRadius::same(6))
-                        .min_size(Vec2::new(ui.available_width(), 40.0));
-                    if ui.add(fire_btn).clicked() {
-                        self.sim.fire_photons();
-                    }
+                            let reset_lbl = if self.sim.sandbox_mode { "RESET BEAM  [R]" } else { "RESET LEVEL  [R]" };
+                            let reset_btn = egui::Button::new(RichText::new(reset_lbl).strong().size(12.5).color(TEXT_WHITE))
+                                .fill(PANEL_BG)
+                                .stroke(Stroke::new(1.0_f32, GRID_LINE))
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(ui.available_width(), 36.0));
+                            if ui.add(reset_btn).clicked() {
+                                self.sfx.play(SfxEvent::Select);
+                                if self.sim.sandbox_mode {
+                                    self.sim.sync_sandbox_from_bp();
+                                } else {
+                                    let cur = self.sim.level_idx;
+                                    self.switch_level(cur, Some(false));
+                                }
+                            }
+                        },
+                    );
+
+                    // Playback Primary Row: FIRE LASER [SPACE] + STEP [.]
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(row_w, 40.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            let step_w = 88.0;
+                            let fire_w = (row_w - step_w - 6.0).max(120.0);
+                            let fire_btn = egui::Button::new(RichText::new("FIRE LASER  [SPACE]").strong().size(13.5).color(TEXT_WHITE))
+                                .fill(ACCENT_RED)
+                                .corner_radius(CornerRadius::same(6))
+                                .min_size(Vec2::new(fire_w, 40.0));
+                            if ui.add(fire_btn).clicked() {
+                                self.sim.fire_photons();
+                            }
+
+                            let step_paused = self.sim.sim_active && self.sim.paused;
+                            let step_btn = egui::Button::new(
+                                RichText::new("STEP  [.]")
+                                    .strong()
+                                    .size(12.5)
+                                    .color(if step_paused { BG_DARK } else { ACCENT_CYAN }),
+                            )
+                            .fill(if step_paused { ACCENT_CYAN } else { Color32::from_rgb(18, 34, 48) })
+                            .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                            .corner_radius(CornerRadius::same(6))
+                            .min_size(Vec2::new(ui.available_width(), 40.0));
+                            if ui
+                                .add(step_btn)
+                                .on_hover_text("Step forward +5ps per click (auto-fires paused if Ready) [.]")
+                                .clicked()
+                            {
+                                self.sim.step_one_paused_frame();
+                                self.sfx.play(SfxEvent::Select);
+                            }
+                        },
+                    );
 
                     // Keybind legend
                     let hint = if self.sim.sandbox_mode {
-                        "SPACE Fire • Q/E Aim • L Align • Cmd+Z Undo"
+                        "SPACE Fire • . Step • Q/E Aim • T Glossary"
                     } else {
-                        "SPACE Fire • L Align • I Hint • Cmd+Z Undo"
+                        "SPACE Fire • . Step • F1 Help • T Glossary"
                     };
                     ui.label(
                         RichText::new(hint)
@@ -928,6 +1071,7 @@ impl eframe::App for QnBenchApp {
             &mut self.overlay,
             &mut self.sim,
             &self.videos,
+            &mut self.glossary,
             #[cfg(not(target_arch = "wasm32"))]
             &self.updater,
         );

@@ -777,6 +777,8 @@ pub enum Overlay {
     None,
     Level(usize),
     Comp(&'static str),
+    UiHelp,
+    Glossary,
     QkdAes,
     SandboxShare,
     LabReport,
