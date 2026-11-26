@@ -4,6 +4,7 @@
 
 mod app;
 mod audio;
+mod emblem;
 mod glossary;
 mod levels;
 mod model;

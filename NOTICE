@@ -1,0 +1,27 @@
+QN Bench — Quantum Networking Optical Bench
+Copyright (c) 2026 Al Anderson
+
+================================================================================
+LICENSING NOTICE — EDUCATIONAL & NON-COMMERCIAL USE ONLY
+================================================================================
+
+1. Software Source Code & Binaries (src/, web/, Cargo.toml, builds):
+   Licensed under the PolyForm Noncommercial License 1.0.0
+   SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+   Full text: LICENSE (https://polyformproject.org/licenses/noncommercial/1.0.0)
+
+   You may freely use, study, modify, and redistribute this software for
+   personal, academic, classroom, and other noncommercial educational purposes.
+   You may NOT sell this software, use it for commercial purposes, or create
+   commercial derivative works from it without a separate written commercial
+   license from the copyright holder.
+
+2. Educational Content, Documentation & Instructional Media
+   (level briefings, terminology glossary, docs/, screenshots, and lab videos):
+   Licensed under Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+   International (CC BY-NC-SA 4.0)
+   SPDX-License-Identifier: CC-BY-NC-SA-4.0
+   https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+For commercial licensing inquiries, contact Al Anderson via:
+https://github.com/skcalanderson2/qn_bench

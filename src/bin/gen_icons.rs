@@ -1,6 +1,9 @@
 //! Pure-Rust procedural macOS .icns and Windows .ico icon generator for QN Bench.
 //! Zero external image assets: renders a 1024x1024 RGBA optical-bench icon directly.
 
+#[path = "../emblem.rs"]
+mod emblem;
+
 use std::f32::consts::PI;
 use std::fs;
 use std::path::Path;
@@ -304,6 +307,14 @@ fn render_master_icon() -> Canvas {
     card
 }
 
+fn render_scaled_png(master: &Canvas, px: usize) -> Vec<u8> {
+    let mut scaled = master.downscale(px);
+    if px >= 64 {
+        let _ = emblem::encode_rgb_lsb(&mut scaled.px, 4, emblem::LICENSE_RECORD);
+    }
+    scaled.encode_png()
+}
+
 fn write_icns(master: &Canvas, path: &Path) {
     let types: &[(&[u8; 4], usize)] = &[
         (b"icp4", 16),
@@ -323,7 +334,7 @@ fn write_icns(master: &Canvas, path: &Path) {
     for &(tag, px) in types {
         let data = cache
             .entry(px)
-            .or_insert_with(|| master.downscale(px).encode_png());
+            .or_insert_with(|| render_scaled_png(master, px));
         body.extend_from_slice(tag);
         body.extend_from_slice(&((8 + data.len()) as u32).to_be_bytes());
         body.extend_from_slice(data);
@@ -340,7 +351,7 @@ fn write_ico(master: &Canvas, path: &Path) {
     let sizes = [16usize, 24, 32, 48, 64, 128, 256];
     let pngs: Vec<(usize, Vec<u8>)> = sizes
         .iter()
-        .map(|&px| (px, master.downscale(px).encode_png()))
+        .map(|&px| (px, render_scaled_png(master, px)))
         .collect();
     let count = pngs.len() as u16;
     let mut out = Vec::new();
@@ -367,8 +378,92 @@ fn write_ico(master: &Canvas, path: &Path) {
     println!("Generated {} ({} bytes)", path.display(), out.len());
 }
 
+fn inspect_file(path: &Path) -> bool {
+    let Ok(bytes) = fs::read(path) else {
+        eprintln!("Could not read {}", path.display());
+        return false;
+    };
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        if let Some(rec) = emblem::decode_png_payload(&bytes) {
+            println!("OK  {} => {}", path.display(), rec);
+            return true;
+        }
+    } else if bytes.starts_with(b"icns") && bytes.len() >= 8 {
+        let mut pos = 8usize;
+        while pos + 8 <= bytes.len() {
+            let chunk_len = u32::from_be_bytes([bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]]) as usize;
+            if chunk_len < 8 || pos + chunk_len > bytes.len() {
+                break;
+            }
+            let chunk = &bytes[pos + 8..pos + chunk_len];
+            if chunk.starts_with(b"\x89PNG\r\n\x1a\n") {
+                if let Some(rec) = emblem::decode_png_payload(chunk) {
+                    let tag = String::from_utf8_lossy(&bytes[pos..pos + 4]);
+                    println!("OK  {} [{}] => {}", path.display(), tag, rec);
+                    return true;
+                }
+            }
+            pos += chunk_len;
+        }
+    } else if bytes.len() >= 6 && bytes[0..4] == [0, 0, 1, 0] {
+        let count = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
+        for i in 0..count {
+            let e = 6 + i * 16;
+            if e + 16 > bytes.len() {
+                break;
+            }
+            let sz = u32::from_le_bytes([bytes[e + 8], bytes[e + 9], bytes[e + 10], bytes[e + 11]]) as usize;
+            let off = u32::from_le_bytes([bytes[e + 12], bytes[e + 13], bytes[e + 14], bytes[e + 15]]) as usize;
+            if off + sz <= bytes.len() && bytes[off..off + sz].starts_with(b"\x89PNG\r\n\x1a\n") {
+                if let Some(rec) = emblem::decode_png_payload(&bytes[off..off + sz]) {
+                    println!("OK  {} [frame {}] => {}", path.display(), i, rec);
+                    return true;
+                }
+            }
+        }
+    }
+    eprintln!("MISS {}", path.display());
+    false
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(pos) = args.iter().position(|a| a == "--apply-png") {
+        for p in &args[pos + 1..] {
+            let path = Path::new(p);
+            let raw = fs::read(path).expect("read png");
+            let updated = emblem::encode_png_payload(&raw, emblem::LICENSE_RECORD).expect("encode png");
+            fs::write(path, &updated).expect("write png");
+            println!("Updated {} ({} bytes)", path.display(), updated.len());
+        }
+        return;
+    }
+    if let Some(pos) = args.iter().position(|a| a == "--inspect") {
+        let mut all_ok = true;
+        for p in &args[pos + 1..] {
+            if !inspect_file(Path::new(p)) {
+                all_ok = false;
+            }
+        }
+        if !all_ok {
+            std::process::exit(1);
+        }
+        return;
+    }
+    if let Some(pos) = args.iter().position(|a| a == "--favicon") {
+        let master = render_master_icon();
+        let data = render_scaled_png(&master, 128);
+        for p in &args[pos + 1..] {
+            let path = Path::new(p);
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            fs::write(path, &data).expect("write favicon");
+            println!("Generated {} ({} bytes)", path.display(), data.len());
+        }
+        return;
+    }
+
     let out_dir = Path::new("build");
     fs::create_dir_all(out_dir).expect("create build/");
     let master = render_master_icon();

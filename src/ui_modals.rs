@@ -51,6 +51,7 @@ pub fn draw_modal_overlay(
     sim: &mut BenchSim,
     videos: &VideoCatalog,
     glossary: &mut GlossaryState,
+    emblem_tex: &egui::TextureHandle,
     #[cfg(not(target_arch = "wasm32"))] updater: &UpdateManager,
 ) {
     if *overlay == Overlay::None {
@@ -278,18 +279,27 @@ pub fn draw_modal_overlay(
                 .max_width(720.0f32.min(screen.width() - 28.0))
                 .frame(modal_frame(ACCENT_CYAN))
                 .show(ctx, |ui| {
-                    ui.label(
-                        RichText::new("INTERFACE MANUAL  •  CONTROLS, PLAYBACK & TELEMETRY")
-                            .strong()
-                            .size(11.0)
-                            .color(ACCENT_CYAN),
-                    );
-                    ui.label(
-                        RichText::new("QN Bench UI Help Guide")
-                            .strong()
-                            .size(18.0)
-                            .color(TEXT_WHITE),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::Image::new((emblem_tex.id(), Vec2::splat(40.0)))
+                                .corner_radius(CornerRadius::same(8)),
+                        );
+                        ui.add_space(4.0);
+                        ui.vertical(|ui| {
+                            ui.label(
+                                RichText::new("INTERFACE MANUAL  •  CONTROLS, PLAYBACK & TELEMETRY")
+                                    .strong()
+                                    .size(11.0)
+                                    .color(ACCENT_CYAN),
+                            );
+                            ui.label(
+                                RichText::new("QN Bench UI Help Guide")
+                                    .strong()
+                                    .size(18.0)
+                                    .color(TEXT_WHITE),
+                            );
+                        });
+                    });
                     ui.separator();
                     ui.add_space(6.0);
 
@@ -392,7 +402,13 @@ pub fn draw_modal_overlay(
                                 });
                         });
 
-                    ui.add_space(12.0);
+                    ui.add_space(8.0);
+                    ui.label(
+                        RichText::new("Copyright (c) 2026 Al Anderson  •  Educational & Non-Commercial Use Only (PolyForm Noncommercial 1.0.0 / CC BY-NC-SA 4.0)")
+                            .size(10.5)
+                            .color(TEXT_MUTED),
+                    );
+                    ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         let gl_btn = egui::Button::new(
                             RichText::new("OPEN TERMINOLOGY GLOSSARY  [T]")

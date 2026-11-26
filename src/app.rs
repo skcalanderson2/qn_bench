@@ -57,6 +57,7 @@ pub struct QnBenchApp {
     sfx: SoundEngine,
     videos: VideoCatalog,
     glossary: GlossaryState,
+    emblem_tex: egui::TextureHandle,
     overlay: Overlay,
     accum_dt: f64,
     #[cfg(target_arch = "wasm32")]
@@ -131,11 +132,19 @@ impl QnBenchApp {
             u
         };
 
+        let (ew, eh, ergba) = crate::emblem::render_app_emblem_rgba();
+        let emblem_tex = cc.egui_ctx.load_texture(
+            "qn_bench_emblem",
+            egui::ColorImage::from_rgba_unmultiplied([ew, eh], &ergba),
+            egui::TextureOptions::LINEAR,
+        );
+
         Self {
             sim,
             sfx,
             videos: VideoCatalog::new(),
             glossary: GlossaryState::default(),
+            emblem_tex,
             overlay: initial_overlay,
             accum_dt: 0.0,
             #[cfg(target_arch = "wasm32")]
@@ -1094,6 +1103,7 @@ impl eframe::App for QnBenchApp {
             &mut self.sim,
             &self.videos,
             &mut self.glossary,
+            &self.emblem_tex,
             #[cfg(not(target_arch = "wasm32"))]
             &self.updater,
         );

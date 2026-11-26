@@ -2,6 +2,9 @@
 name = "qn_bench"
 version = "2.10.2"
 edition = "2021"
+authors = ["Al Anderson"]
+license = "PolyForm-Noncommercial-1.0.0"
+repository = "https://github.com/skcalanderson2/qn_bench"
 description = "QN Bench — Quantum Networking Optical Bench (macOS, Windows, WebAssembly)"
 default-run = "qn_bench"
 
