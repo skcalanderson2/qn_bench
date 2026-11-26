@@ -1,6 +1,6 @@
 [package]
 name = "qn_bench"
-version = "2.10.2"
+version = "2.10.3"
 edition = "2021"
 authors = ["Al Anderson"]
 license = "PolyForm-Noncommercial-1.0.0"
