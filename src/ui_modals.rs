@@ -73,6 +73,7 @@ pub fn draw_modal_overlay(
                 };
                 if can_dismiss {
                     *overlay = Overlay::None;
+                    sim.confirm_reset_progress = false;
                     sim.pending_sfx.push(SfxEvent::Select);
                 }
             }
@@ -326,7 +327,7 @@ pub fn draw_modal_overlay(
                                 "3. READING THE BOTTOM TELEMETRY DECK & OSCILLOSCOPES",
                                 ACCENT_GREEN,
                                 &[
-                                    ("Header & Level Pills:", "Top row shows active level title, REPORT star tally, playback speed/pause/STEP, T+ps clock, and link state (READY / ACTIVE / LOCKED / FAULT). Second row jumps across Levels 1-20 (green = solved, gold = 3-star optimal) and SANDBOX."),
+                                    ("Header & Level Pills:", "Top row shows active level title, REPORT star tally, playback speed/pause/STEP, T+ps clock, and link state (READY / ACTIVE / LOCKED / FAULT). Second row jumps across Levels 1-20 (green = solved, gold corner pip = 3-star optimal) and SANDBOX."),
                                     ("Fidelity & Raman Scopes:", "Left scope tracks quantum state fidelity vs. dashed 60% (or 90% QPU) threshold. Center scope & LED bar track Raman noise (detectors latch if noise > 10)."),
                                     ("Spectrum / HOM Dip:", "Right scope shows wavelength lock pills (1550nm / NOISE<=10 / FID) on SNSPD/QPU levels, or the Hong-Ou-Mandel Coincidence Dip (window <= 15ps) on BSM/Teleport levels."),
                                     ("QKD & AES-256 Mode:", "Levels 12-14 & 16 switch scopes to QBER / Bell CHSH (QBER <= 11%, S > 2.0), Live Basis Sifting ('+' / 'x'), and the AES-256 Engine. Click INSPECT QKD & AES-256 [K] to encrypt live custom text."),
@@ -1135,6 +1136,44 @@ pub fn draw_modal_overlay(
                                 });
                         });
 
+                    if sim.confirm_reset_progress {
+                        ui.add_space(8.0);
+                        egui::Frame::NONE
+                            .fill(Color32::from_rgb(46, 18, 24))
+                            .stroke(Stroke::new(1.5_f32, ACCENT_RED))
+                            .corner_radius(CornerRadius::same(6))
+                            .inner_margin(egui::Margin::symmetric(10, 7))
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new("Clear all completed levels and star ratings? This cannot be undone.")
+                                            .strong()
+                                            .size(11.5)
+                                            .color(TEXT_WHITE),
+                                    );
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        let cancel_btn = egui::Button::new(RichText::new("CANCEL").strong().size(11.0).color(TEXT_WHITE))
+                                            .fill(PANEL_BG)
+                                            .stroke(Stroke::new(1.0_f32, GRID_LINE))
+                                            .min_size(Vec2::new(68.0, 26.0));
+                                        if ui.add(cancel_btn).clicked() {
+                                            sim.confirm_reset_progress = false;
+                                            sim.pending_sfx.push(SfxEvent::Select);
+                                        }
+                                        let yes_btn = egui::Button::new(RichText::new("CONFIRM RESET").strong().size(11.0).color(TEXT_WHITE))
+                                            .fill(ACCENT_RED)
+                                            .min_size(Vec2::new(116.0, 26.0));
+                                        if ui.add(yes_btn).clicked() {
+                                            sim.reset_campaign_progress();
+                                            sim.sandbox_json_msg = Some(("All campaign progress and star ratings have been reset.".to_string(), ACCENT_AMBER));
+                                            sim.pending_sfx.push(SfxEvent::Remove);
+                                        }
+                                    });
+                                });
+                            });
+                    }
+
                     if let Some((msg, col)) = &sim.sandbox_json_msg {
                         ui.add_space(6.0);
                         ui.label(RichText::new(msg).size(12.0).color(*col));
@@ -1151,6 +1190,27 @@ pub fn draw_modal_overlay(
                             sim.sandbox_json_msg = Some(("Copied Markdown Quantum Lab Report to clipboard!".to_string(), ACCENT_GREEN));
                             sim.pending_sfx.push(SfxEvent::Select);
                         }
+
+                        let has_progress = done > 0 || stars > 0;
+                        let rst_btn = egui::Button::new(
+                            RichText::new("RESET PROGRESS")
+                                .strong()
+                                .size(12.0)
+                                .color(if has_progress { ACCENT_RED } else { TEXT_MUTED }),
+                        )
+                        .fill(if has_progress { Color32::from_rgb(42, 20, 26) } else { Color32::from_rgb(22, 26, 36) })
+                        .stroke(Stroke::new(1.0_f32, if has_progress { ACCENT_RED } else { GRID_LINE }))
+                        .min_size(Vec2::new(142.0, 34.0));
+                        if ui
+                            .add_enabled(has_progress && !sim.confirm_reset_progress, rst_btn)
+                            .on_hover_text("Clear all saved level completions and star ratings (asks for confirmation)")
+                            .clicked()
+                        {
+                            sim.confirm_reset_progress = true;
+                            sim.sandbox_json_msg = None;
+                            sim.pending_sfx.push(SfxEvent::Select);
+                        }
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let cls = egui::Button::new(RichText::new("CLOSE  [ESC]").strong().size(12.5).color(TEXT_WHITE))
                                 .fill(PANEL_BG)
@@ -1164,6 +1224,7 @@ pub fn draw_modal_overlay(
                 });
             if close {
                 *overlay = Overlay::None;
+                sim.confirm_reset_progress = false;
                 sim.sandbox_json_msg = None;
                 sim.pending_sfx.push(SfxEvent::Select);
             }

@@ -215,6 +215,7 @@ pub struct BenchSim {
     pub completed_levels: HashSet<usize>,
     pub level_stars: BTreeMap<usize, u8>,
     pub last_earned_stars: Option<u8>,
+    pub confirm_reset_progress: bool,
     pub seen_briefings: HashSet<usize>,
     pub tick: u32,
     pub frame: u64,
@@ -277,6 +278,7 @@ impl BenchSim {
             completed_levels: HashSet::new(),
             level_stars: BTreeMap::new(),
             last_earned_stars: None,
+            confirm_reset_progress: false,
             seen_briefings: HashSet::new(),
             tick: 0,
             frame: 0,
@@ -1213,6 +1215,17 @@ impl BenchSim {
 
     pub fn total_stars(&self) -> u32 {
         self.level_stars.values().map(|&s| s as u32).sum()
+    }
+
+    /// Clear all saved campaign completion flags and efficiency star ratings.
+    pub fn reset_campaign_progress(&mut self) {
+        self.completed_levels.clear();
+        self.level_stars.clear();
+        self.last_earned_stars = None;
+        self.confirm_reset_progress = false;
+        if !self.sandbox_mode {
+            self.level_complete = false;
+        }
     }
 
     fn record_level_victory(&mut self) {
@@ -2793,6 +2806,13 @@ mod tests {
         assert!(md.contains("Level 20: Quantum Teleportation"));
         assert!(md.contains("*** (3/3 Optimal)"));
         assert!(md.contains("** (2/3)"));
+
+        // 5. Resetting campaign progress clears completed levels and star ratings cleanly
+        sim.reset_campaign_progress();
+        assert!(sim.completed_levels.is_empty());
+        assert!(sim.level_stars.is_empty());
+        assert_eq!(sim.total_stars(), 0);
+        assert_eq!(sim.last_earned_stars, None);
     }
 
     #[test]

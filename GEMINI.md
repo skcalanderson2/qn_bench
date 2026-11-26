@@ -3,7 +3,7 @@
 ## Project Overview
 **QN Bench** is an educational 2D optical-bench puzzle game built in **Rust + `eframe`/`egui`** (targeting **WebAssembly**, **macOS Universal**, and **Windows x64**). It teaches both the conceptual physics and the physical hardware stack of quantum networking — single-photon transduction, Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, chromatic dispersion, dichroic WDM routing, entanglement distillation, multi-hop repeaters, Bennett et al. (1993) Quantum Teleportation, and end-to-end **BB84 / E91 QKD + FIPS-197 AES-256** cryptography.
 
-* **Current Shipped Version:** `v2.10.1` (legacy Python `v1.1.0` preserved on branch `python-v1`)
+* **Current Shipped Version:** `v2.10.2` (legacy Python `v1.1.0` preserved on branch `python-v1`)
 * **Repository:** `https://github.com/skcalanderson2/qn_bench`
 * **Play in Browser (WASM):** `https://skcalanderson2.github.io/qn_bench/play/`
 * **Download Site:** `https://skcalanderson2.github.io/qn_bench/`

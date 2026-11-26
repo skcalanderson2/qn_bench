@@ -190,6 +190,7 @@ impl QnBenchApp {
                 };
                 if can_close {
                     self.overlay = Overlay::None;
+                    self.sim.confirm_reset_progress = false;
                     self.sfx.play(SfxEvent::Select);
                 }
                 return;
@@ -299,6 +300,7 @@ impl QnBenchApp {
             self.sfx.play(SfxEvent::Select);
         } else if report_g {
             self.sim.sandbox_json_msg = None;
+            self.sim.confirm_reset_progress = false;
             self.overlay = Overlay::LabReport;
             self.sfx.play(SfxEvent::Select);
         } else if video_v && !self.sim.sandbox_mode {
@@ -1062,6 +1064,7 @@ impl eframe::App for QnBenchApp {
                 }
                 if action.open_lab_report {
                     self.sim.sandbox_json_msg = None;
+                    self.sim.confirm_reset_progress = false;
                     self.overlay = Overlay::LabReport;
                     self.sfx.play(SfxEvent::Select);
                 }

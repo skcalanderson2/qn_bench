@@ -199,11 +199,15 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim, has_video: bool) -> 
             let is_cur = !sim.sandbox_mode && i == sim.level_idx;
             let is_done = sim.completed_levels.contains(&i);
             let stars = sim.level_stars.get(&i).copied().unwrap_or(if is_done { 1 } else { 0 });
-            let bg = if is_cur { Color32::from_rgb(36, 56, 78) } else { Color32::from_rgb(18, 24, 34) };
+            let bg = if is_cur {
+                Color32::from_rgb(36, 56, 78)
+            } else if is_done {
+                Color32::from_rgb(16, 40, 32)
+            } else {
+                Color32::from_rgb(18, 24, 34)
+            };
             let bd = if is_cur {
                 ACCENT_CYAN
-            } else if stars >= 3 {
-                ACCENT_AMBER
             } else if is_done {
                 ACCENT_GREEN
             } else {
@@ -211,8 +215,6 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim, has_video: bool) -> 
             };
             let fg = if is_cur {
                 TEXT_WHITE
-            } else if stars >= 3 {
-                ACCENT_AMBER
             } else if is_done {
                 ACCENT_GREEN
             } else {
@@ -223,12 +225,20 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim, has_video: bool) -> 
                 .stroke(Stroke::new(1.0_f32, bd))
                 .corner_radius(CornerRadius::same(4))
                 .min_size(Vec2::new(pill_w, 20.0));
-            let hover_txt = if is_done {
-                format!("{}  ({}/3 Stars)", sim.levels[i].title, stars)
+            let hover_txt = if is_done && stars >= 3 {
+                format!("{}  •  Solved (3/3 Stars - Optimal)", sim.levels[i].title)
+            } else if is_done {
+                format!("{}  •  Solved ({}/3 Stars)", sim.levels[i].title, stars)
             } else {
-                sim.levels[i].title.to_string()
+                format!("{}  •  Not solved yet", sim.levels[i].title)
             };
-            if ui.add(btn).on_hover_text(hover_txt).clicked() {
+            let resp = ui.add(btn).on_hover_text(hover_txt);
+            // Subtle gold corner pip marks 3/3 optimal mastery without turning the pill warning-yellow
+            if stars >= 3 {
+                let pip = Pos2::new(resp.rect.right() - 3.0, resp.rect.top() + 3.0);
+                ui.painter().circle_filled(pip, 2.3, ACCENT_AMBER);
+            }
+            if resp.clicked() {
                 action.jump_level = Some(i);
             }
         }
