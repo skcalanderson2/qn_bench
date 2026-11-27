@@ -70,7 +70,7 @@ Preserve these physical constraints when adding levels or components:
 * **Act II (Levels 17–20):**
   * L17 Chromatic Dispersion (`CD_FIBER`, `DCF`) • L18 WDM Wavelength Routing (`WDM (\)`) • L19 Dispersive Metro Link (`CD_FIBER` + `LIT_FIBER` + `DISTILL` -> `QPU`) • L20 Quantum Teleportation (`|Psi> 'x'` + `EPR` + `TELE-BSM` + `DCF` + `HWP` -> `TELEPORT RX`).
 * **Free-Build Sandbox (`S`):** Unlimited optics/channels/rotatable emitters/EPR/detectors, starter labs, campaign cloning, JSON import/export, and playable `#bp=<base64url>` share links.
-* **YouTube Lab Video Guides:** 20 generated 1080p `.mp4` + `.srt` files in `videos/` (10 uploaded & active in `docs/videos.json`; remaining 10 pending YouTube daily upload limit reset).
+* **YouTube Lab Video Guides:** All **20/20** generated 1080p `.mp4` + `.srt` guides uploaded to YouTube and active in `docs/videos.json` (verified unique & valid in `cargo test`).
 
 ---
 

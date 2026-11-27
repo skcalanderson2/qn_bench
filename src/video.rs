@@ -334,16 +334,22 @@ mod tests {
         assert_eq!(parsed.get(&19).map(String::as_str), Some("AbCdEf123_-"));
         assert!(!parsed.contains_key(&1));
 
-        // Verify the real embedded docs/videos.json parses cleanly and every non-empty URL is valid
+        // Verify the real embedded docs/videos.json parses cleanly and all 20 levels have unique valid IDs
         let raw: RawVideoManifest =
             serde_json::from_str(EMBEDDED_VIDEOS_JSON).expect("valid docs/videos.json");
+        let live = parse_manifest_levels(EMBEDDED_VIDEOS_JSON);
+        assert_eq!(live.len(), 20, "All 20 campaign levels should have YouTube video guides");
+        let mut seen_ids = std::collections::HashSet::new();
         for (k, v) in &raw.levels {
-            if !v.trim().is_empty() {
-                assert!(
-                    extract_youtube_id(v).is_some(),
-                    "Invalid YouTube link/ID for level {k}: {v}"
-                );
-            }
+            let id = extract_youtube_id(v)
+                .unwrap_or_else(|| panic!("Invalid YouTube link/ID for level {k}: {v}"));
+            assert!(
+                seen_ids.insert(id.clone()),
+                "Duplicate YouTube video ID {id} found at level {k}"
+            );
+        }
+        for idx in 0..20 {
+            assert!(live.contains_key(&idx), "Missing video guide for Level {}", idx + 1);
         }
     }
 }

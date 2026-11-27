@@ -1,15 +1,12 @@
 # QN Bench — Future Roadmap & Expansion Plan
 
-Current shipped release: **`v2.8.0`** (20-level campaign, Free-Build Sandbox + `#bp=` share links, Live QKD/AES-256 inspector, `+5ps` Frame Debugger, 1–3 Star Efficiency Ratings & Lab Report, Touch Erase `[X]` & Colorblind Accessibility `[C]`, and In-App YouTube Lab Video Guides).
+Current shipped release: **`v2.10.3`** (20-level campaign, Free-Build Sandbox + `#bp=` share links, Live QKD/AES-256 inspector, auto-firing `STEP` Frame Debugger, UI Help Guide `[F1]`, Searchable Terminology Glossary `[T]`, fixed-square dynamic-grid scrollable optical bench, 1–3 Star Efficiency Ratings & Lab Report with Reset Progress, Touch Erase `[X]` & Colorblind Accessibility `[C]`, PolyForm Noncommercial 1.0.0 / CC BY-NC-SA 4.0 licensing, and all 20/20 In-App YouTube Lab Video Guides).
 
 ---
 
-## Immediate Follow-Up (Zero App Rebuild Needed)
-- [ ] **Finish Uploading Remaining 10 YouTube Lab Videos** (once YouTube's 24-hour upload quota resets):
-  - Already live (10): Levels `1, 3, 4, 5, 6, 7, 8, 12, 14, 15`.
-  - Remaining `.mp4` + `.srt` files ready in `videos/`: Levels `2, 9, 10, 11, 13, 16, 17, 18, 19, 20` (with ready-to-paste titles & descriptions in `videos/youtube_metadata.md`).
-  - Paste the 10 new YouTube URLs into `docs/videos.json` and push to `main` — both WebAssembly (`play/`) and already-installed `v2.8.0` desktop apps pick them up automatically on launch.
-  - Optional: create a YouTube playlist for all 20 guides and populate `"playlist_url"` in `docs/videos.json`.
+## Completed Follow-Up
+- [x] **All 20/20 YouTube Lab Videos Uploaded & Live** (`docs/videos.json` updated with unique links for Levels `1–20`; both WebAssembly `play/` and installed Desktop apps automatically fetch all 20 guides).
+  - Optional future touch: create a YouTube playlist for all 20 guides and populate `"playlist_url"` in `docs/videos.json`.
 
 ---
 
