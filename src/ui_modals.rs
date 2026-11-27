@@ -91,130 +91,169 @@ pub fn draw_modal_overlay(
             let lvl_new_hw = sim.levels[idx].new_hardware;
             let total_levels = sim.levels.len();
             let mut close = false;
+            let mut open_glossary = false;
+            let scroll_h = (screen.height() - 190.0).clamp(220.0, 500.0);
             egui::Window::new("experiment_briefing")
                 .order(egui::Order::Foreground)
                 .title_bar(false)
                 .resizable(false)
                 .collapsible(false)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-                .min_width(660.0f32.min(screen.width() - 32.0))
-                .max_width(660.0f32.min(screen.width() - 32.0))
+                .min_width(680.0f32.min(screen.width() - 32.0))
+                .max_width(680.0f32.min(screen.width() - 32.0))
                 .frame(modal_frame(ACCENT_CYAN))
                 .show(ctx, |ui| {
-                    ui.label(RichText::new(format!("EXPERIMENT BRIEFING  •  LEVEL {} OF {}", idx + 1, total_levels)).strong().size(11.0).color(ACCENT_CYAN));
+                    let kicker = if idx == 0 {
+                        "INTRODUCTORY ORIENTATION  •  LAB 0 (BASICS & TERMINOLOGY)".to_string()
+                    } else {
+                        format!("EXPERIMENT BRIEFING  •  LEVEL {idx} OF {}", total_levels - 1)
+                    };
+                    ui.label(RichText::new(kicker).strong().size(11.0).color(ACCENT_CYAN));
                     ui.label(RichText::new(lvl_title).strong().size(18.0).color(TEXT_WHITE));
                     ui.separator();
                     ui.add_space(4.0);
-                    ui.label(RichText::new(lvl_briefing).size(13.5).color(TEXT_WHITE));
 
-                    if !lvl_new_hw.is_empty() {
-                        ui.add_space(10.0);
-                        ui.label(RichText::new("NEW HARDWARE INTRODUCED IN THIS LEVEL").strong().size(11.0).color(ACCENT_AMBER));
-                        ui.add_space(4.0);
-                        for &hk in lvl_new_hw {
-                            if let Some(doc) = hardware_doc(hk) {
+                    egui::ScrollArea::vertical()
+                        .id_salt(("briefing_scroll", idx))
+                        .max_height(scroll_h)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            ui.label(RichText::new(lvl_briefing).size(13.5).color(TEXT_WHITE));
+
+                            if idx == 0 {
+                                ui.add_space(10.0);
+                                help_card(
+                                    ui,
+                                    "CORE QUANTUM NETWORKING TERMINOLOGY (QUICK PRIMER)",
+                                    ACCENT_AMBER,
+                                    &[
+                                        ("Photonic Qubit:", "A single particle of light (photon) carrying quantum information between matter nodes."),
+                                        ("Wavelength (780nm vs 1550nm):", "Trapped ions emit visible 780nm red light; telecom fibers & detectors run in the low-loss 1550nm infrared C-band (cyan)."),
+                                        ("Fidelity (0% - 100%):", "Quality of the quantum state. Must stay >= 60% for SNSPD/BSM and >= 90% for Fault-Tolerant QPUs."),
+                                        ("Raman Noise (<= 10):", "Stray background photons from bright pump or data lasers. Excess noise blinds detectors until stripped by a VBG Filter (-50)."),
+                                        ("Picoseconds (ps) & STEP [.]:", "1 grid square = 100ps of photon flight. Use STEP [.] to advance +5ps per click, or open GLOSSARY [T] for all 60 terms & components."),
+                                    ],
+                                );
+                            }
+
+                            if !lvl_new_hw.is_empty() {
+                                ui.add_space(8.0);
+                                let hw_hdr = if idx == 0 {
+                                    "FOUNDATIONAL BENCH HARDWARE (LAB 0)"
+                                } else {
+                                    "NEW HARDWARE INTRODUCED IN THIS LEVEL"
+                                };
+                                ui.label(RichText::new(hw_hdr).strong().size(11.0).color(ACCENT_AMBER));
+                                ui.add_space(4.0);
+                                for &hk in lvl_new_hw {
+                                    if let Some(doc) = hardware_doc(hk) {
+                                        egui::Frame::NONE
+                                            .fill(Color32::from_rgb(13, 19, 30))
+                                            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(38, 50, 68)))
+                                            .corner_radius(CornerRadius::same(7))
+                                            .inner_margin(egui::Margin::symmetric(12, 8))
+                                            .show(ui, |ui| {
+                                                ui.set_width(ui.available_width());
+                                                ui.label(RichText::new(doc.title).strong().size(13.5).color(doc.color));
+                                                ui.label(RichText::new(format!("{} {}", doc.rule, doc.physics)).size(12.0).color(TEXT_MUTED));
+                                            });
+                                        ui.add_space(6.0);
+                                    }
+                                }
+                            }
+
+                            // Progressive 2-Tier Opt-In Hint System
+                            ui.add_space(8.0);
+                            if sim.hint_tier == 0 {
+                                ui.horizontal(|ui| {
+                                    let h1_btn = egui::Button::new(RichText::new("? NEED A HINT (PHYSICS NUDGE)").strong().size(11.5).color(ACCENT_AMBER))
+                                        .fill(Color32::from_rgb(32, 26, 16))
+                                        .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                                        .corner_radius(CornerRadius::same(6))
+                                        .min_size(Vec2::new(230.0, 28.0));
+                                    if ui.add(h1_btn).clicked() {
+                                        sim.hint_tier = 1;
+                                        sim.pending_sfx.push(SfxEvent::Select);
+                                    }
+                                    ui.label(RichText::new("Optional — spoilers hidden until clicked").size(11.0).color(TEXT_MUTED));
+                                });
+                            } else {
                                 egui::Frame::NONE
-                                    .fill(Color32::from_rgb(13, 19, 30))
-                                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(38, 50, 68)))
+                                    .fill(Color32::from_rgb(28, 24, 16))
+                                    .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
                                     .corner_radius(CornerRadius::same(7))
                                     .inner_margin(egui::Margin::symmetric(12, 8))
                                     .show(ui, |ui| {
                                         ui.set_width(ui.available_width());
-                                        ui.label(RichText::new(doc.title).strong().size(13.5).color(doc.color));
-                                        ui.label(RichText::new(format!("{} {}", doc.rule, doc.physics)).size(12.0).color(TEXT_MUTED));
+                                        ui.label(RichText::new("HINT 1 • PHYSICS NUDGE").strong().size(10.5).color(ACCENT_AMBER));
+                                        ui.label(RichText::new(lvl_hint_1).size(12.5).color(TEXT_WHITE));
                                     });
                                 ui.add_space(6.0);
+                                if sim.hint_tier == 1 {
+                                    let h2_btn = egui::Button::new(RichText::new("REVEAL TACTICAL PLACEMENT HINT").strong().size(11.5).color(ACCENT_CYAN))
+                                        .fill(Color32::from_rgb(18, 30, 44))
+                                        .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                                        .corner_radius(CornerRadius::same(6))
+                                        .min_size(Vec2::new(240.0, 26.0));
+                                    if ui.add(h2_btn).clicked() {
+                                        sim.hint_tier = 2;
+                                        sim.pending_sfx.push(SfxEvent::Select);
+                                    }
+                                } else {
+                                    egui::Frame::NONE
+                                        .fill(Color32::from_rgb(14, 28, 40))
+                                        .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
+                                        .corner_radius(CornerRadius::same(7))
+                                        .inner_margin(egui::Margin::symmetric(12, 8))
+                                        .show(ui, |ui| {
+                                            ui.set_width(ui.available_width());
+                                            ui.label(RichText::new("HINT 2 • TACTICAL PLACEMENT").strong().size(10.5).color(ACCENT_CYAN));
+                                            ui.label(RichText::new(lvl_hint_2).size(12.5).color(TEXT_WHITE));
+                                        });
+                                }
                             }
-                        }
-                    }
-
-                    // Progressive 2-Tier Opt-In Hint System
-                    ui.add_space(8.0);
-                    if sim.hint_tier == 0 {
-                        ui.horizontal(|ui| {
-                            let h1_btn = egui::Button::new(RichText::new("? NEED A HINT (PHYSICS NUDGE)").strong().size(11.5).color(ACCENT_AMBER))
-                                .fill(Color32::from_rgb(32, 26, 16))
-                                .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
-                                .corner_radius(CornerRadius::same(6))
-                                .min_size(Vec2::new(230.0, 28.0));
-                            if ui.add(h1_btn).clicked() {
-                                sim.hint_tier = 1;
-                                sim.pending_sfx.push(SfxEvent::Select);
-                            }
-                            ui.label(RichText::new("Optional — spoilers hidden until clicked").size(11.0).color(TEXT_MUTED));
                         });
-                    } else {
-                        egui::Frame::NONE
-                            .fill(Color32::from_rgb(28, 24, 16))
-                            .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
-                            .corner_radius(CornerRadius::same(7))
-                            .inner_margin(egui::Margin::symmetric(12, 8))
-                            .show(ui, |ui| {
-                                ui.set_width(ui.available_width());
-                                ui.label(RichText::new("HINT 1 • PHYSICS NUDGE").strong().size(10.5).color(ACCENT_AMBER));
-                                ui.label(RichText::new(lvl_hint_1).size(12.5).color(TEXT_WHITE));
-                            });
-                        ui.add_space(6.0);
-                        if sim.hint_tier == 1 {
-                            let h2_btn = egui::Button::new(RichText::new("REVEAL TACTICAL PLACEMENT HINT").strong().size(11.5).color(ACCENT_CYAN))
-                                .fill(Color32::from_rgb(18, 30, 44))
-                                .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
-                                .corner_radius(CornerRadius::same(6))
-                                .min_size(Vec2::new(240.0, 26.0));
-                            if ui.add(h2_btn).clicked() {
-                                sim.hint_tier = 2;
-                                sim.pending_sfx.push(SfxEvent::Select);
-                            }
-                        } else {
-                            egui::Frame::NONE
-                                .fill(Color32::from_rgb(14, 28, 40))
-                                .stroke(Stroke::new(1.0_f32, ACCENT_CYAN))
-                                .corner_radius(CornerRadius::same(7))
-                                .inner_margin(egui::Margin::symmetric(12, 8))
-                                .show(ui, |ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.label(RichText::new("HINT 2 • TACTICAL PLACEMENT").strong().size(10.5).color(ACCENT_CYAN));
-                                    ui.label(RichText::new(lvl_hint_2).size(12.5).color(TEXT_WHITE));
-                                });
-                        }
-                    }
 
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
                         let yt_id = videos.id_for_level(idx);
                         if let Some(vid) = yt_id {
-                            let v_btn = egui::Button::new(RichText::new("▶ WATCH VIDEO GUIDE [V]").strong().size(13.0).color(TEXT_WHITE))
+                            let v_btn = egui::Button::new(RichText::new("▶ WATCH VIDEO GUIDE [V]").strong().size(12.5).color(TEXT_WHITE))
                                 .fill(Color32::from_rgb(168, 28, 42))
                                 .stroke(Stroke::new(1.0_f32, ACCENT_RED))
                                 .corner_radius(CornerRadius::same(7))
-                                .min_size(Vec2::new(210.0, 36.0));
+                                .min_size(Vec2::new(200.0, 36.0));
                             if ui.add(v_btn).on_hover_text("Watch the narrated conceptual lab video on YouTube").clicked() {
                                 open_lab_video(lvl_title, vid);
                                 sim.pending_sfx.push(SfxEvent::Select);
                             }
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let btn = egui::Button::new(RichText::new("BEGIN EXPERIMENT  [ENTER]").strong().size(14.0).color(BG_DARK))
-                                    .fill(ACCENT_CYAN)
-                                    .corner_radius(CornerRadius::same(7))
-                                    .min_size(Vec2::new(240.0, 36.0));
-                                if ui.add(btn).clicked() {
-                                    close = true;
-                                }
-                            });
-                        } else {
-                            ui.vertical_centered(|ui| {
-                                let btn = egui::Button::new(RichText::new("BEGIN EXPERIMENT  [ENTER]").strong().size(14.0).color(BG_DARK))
-                                    .fill(ACCENT_CYAN)
-                                    .corner_radius(CornerRadius::same(7))
-                                    .min_size(Vec2::new(260.0, 36.0));
-                                if ui.add(btn).clicked() {
-                                    close = true;
-                                }
-                            });
                         }
+                        if idx == 0 {
+                            let g_btn = egui::Button::new(RichText::new("GLOSSARY [T]").strong().size(12.5).color(ACCENT_AMBER))
+                                .fill(Color32::from_rgb(36, 28, 18))
+                                .stroke(Stroke::new(1.0_f32, ACCENT_AMBER))
+                                .corner_radius(CornerRadius::same(7))
+                                .min_size(Vec2::new(132.0, 36.0));
+                            if ui.add(g_btn).on_hover_text("Browse all 60 Quantum Networking Terms & Components [T]").clicked() {
+                                open_glossary = true;
+                            }
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let go_lbl = if idx == 0 { "START LAB 0  [ENTER]" } else { "BEGIN EXPERIMENT  [ENTER]" };
+                            let btn = egui::Button::new(RichText::new(go_lbl).strong().size(13.5).color(BG_DARK))
+                                .fill(ACCENT_CYAN)
+                                .corner_radius(CornerRadius::same(7))
+                                .min_size(Vec2::new(230.0, 36.0));
+                            if ui.add(btn).clicked() {
+                                close = true;
+                            }
+                        });
                     });
                 });
-            if close {
+            if open_glossary {
+                *overlay = Overlay::Glossary;
+                sim.pending_sfx.push(SfxEvent::Select);
+            } else if close {
                 *overlay = Overlay::None;
                 sim.pending_sfx.push(SfxEvent::Select);
             }
@@ -916,7 +955,11 @@ pub fn draw_modal_overlay(
         Overlay::SandboxShare => {
             let mut close = false;
             let cur_campaign_lvl = sim.levels[sim.level_idx].clone();
-            let cur_campaign_num = sim.level_idx + 1;
+            let clone_lbl = if sim.level_idx == 0 {
+                "Clone Lab 0".to_string()
+            } else {
+                format!("Clone Level {}", sim.level_idx)
+            };
             egui::Window::new("sandbox_blueprints")
                 .order(egui::Order::Foreground)
                 .title_bar(false)
@@ -954,7 +997,7 @@ pub fn draw_modal_overlay(
                             ("Starter (ION + SNSPD)", ACCENT_CYAN, SandboxBlueprint::preset_blank()),
                             ("HOM Interferometer Lab", ACCENT_AMBER, SandboxBlueprint::preset_hom_lab()),
                             ("E91 QKD & Eve Lab", ACCENT_PURPLE, SandboxBlueprint::preset_qkd_lab()),
-                            (&format!("Clone Level {cur_campaign_num}"), ACCENT_GREEN, SandboxBlueprint::from_level(&cur_campaign_lvl)),
+                            (&clone_lbl, ACCENT_GREEN, SandboxBlueprint::from_level(&cur_campaign_lvl)),
                         ];
                         for (lbl, col, bp) in presets {
                             let btn = egui::Button::new(RichText::new(lbl).strong().size(11.5).color(col))
@@ -1121,7 +1164,7 @@ pub fn draw_modal_overlay(
                                         let par = crate::levels::level_par_components(i);
                                         ui.horizontal(|ui| {
                                             ui.label(
-                                                RichText::new(format!("{:02}", i + 1))
+                                                RichText::new(format!("{i:02}"))
                                                     .monospace()
                                                     .strong()
                                                     .size(11.5)

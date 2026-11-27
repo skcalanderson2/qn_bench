@@ -1271,7 +1271,7 @@ impl BenchSim {
             };
             let status = if is_done { "LOCKED" } else { "Pending" };
             let par = crate::levels::level_par_components(i);
-            let _ = writeln!(out, "| {} | {} | {} | {} | {} |", i + 1, lvl.title, status, rating, par);
+            let _ = writeln!(out, "| {i} | {} | {} | {} | {} |", lvl.title, status, rating, par);
         }
         if let Some(qs) = &self.qkd_session {
             if !qs.rounds.is_empty() {
@@ -2249,7 +2249,7 @@ mod tests {
         sim.load_level(idx);
         for &(comp, gx, gy) in placements {
             sim.selected = Some(comp);
-            assert!(sim.place_component(gx, gy), "failed placing {comp:?} at ({gx},{gy}) on L{}", idx + 1);
+            assert!(sim.place_component(gx, gy), "failed placing {comp:?} at ({gx},{gy}) on L{idx}");
         }
         sim.fire_photons();
         if let (Some(qs), Some(s)) = (&mut sim.qkd_session, seed) {
@@ -2283,97 +2283,102 @@ mod tests {
     }
 
     #[test]
-    fn all_20_levels_solvable_and_physics_enforced() {
+    fn all_21_labs_solvable_and_physics_enforced() {
         use Placeable::*;
 
-        // L1: fail without QFC, solve with QFC + VBG
+        // Lab 0: Orientation & Terminology (fail without QFC, fail with QFC after VBG, lock with QFC before VBG)
         assert_eq!(run_level(0, &[], None).sim_state, SimState::Fault);
-        assert_eq!(run_level(0, &[(Qfc, 2, 2), (Vbg, 3, 2)], None).sim_state, SimState::Locked);
+        assert_eq!(run_level(0, &[(Qfc, 7, 2)], None).sim_state, SimState::Fault);
+        assert_eq!(run_level(0, &[(Qfc, 3, 2)], None).sim_state, SimState::Locked);
+
+        // L1: fail without QFC, solve with QFC + VBG
+        assert_eq!(run_level(1, &[], None).sim_state, SimState::Fault);
+        assert_eq!(run_level(1, &[(Qfc, 2, 2), (Vbg, 3, 2)], None).sim_state, SimState::Locked);
 
         // L2: Cryostat Obstacles
         assert_eq!(
-            run_level(1, &[(Qfc, 1, 1), (Vbg, 2, 1), (MirrorBack, 3, 1), (MirrorBack, 3, 4)], None).sim_state,
+            run_level(2, &[(Qfc, 1, 1), (Vbg, 2, 1), (MirrorBack, 3, 1), (MirrorBack, 3, 4)], None).sim_state,
             SimState::Locked
         );
 
         // L3: Long-Haul Attenuation
-        assert_eq!(run_level(2, &[(Qfc, 1, 2), (Vbg, 8, 2)], None).sim_state, SimState::Fault);
+        assert_eq!(run_level(3, &[(Qfc, 1, 2), (Vbg, 8, 2)], None).sim_state, SimState::Fault);
         assert_eq!(
-            run_level(2, &[(Qfc, 1, 2), (Memory, 5, 2), (Vbg, 8, 2)], None).sim_state,
+            run_level(3, &[(Qfc, 1, 2), (Memory, 5, 2), (Vbg, 8, 2)], None).sim_state,
             SimState::Locked
         );
 
         // L4: Entanglement Swapping (HOM)
         assert_eq!(
-            run_level(3, &[(Qfc, 1, 1), (Vbg, 2, 1), (MirrorBack, 8, 1), (Qfc, 1, 4), (Vbg, 2, 4), (MirrorSlash, 8, 4)], None).sim_state,
+            run_level(4, &[(Qfc, 1, 1), (Vbg, 2, 1), (MirrorBack, 8, 1), (Qfc, 1, 4), (Vbg, 2, 4), (MirrorSlash, 8, 4)], None).sim_state,
             SimState::Fault
         );
         assert_eq!(
-            run_level(3, &[(Qfc, 1, 1), (Vbg, 2, 1), (Delay, 3, 1), (MirrorBack, 8, 1), (Qfc, 1, 4), (Vbg, 2, 4), (MirrorSlash, 8, 4)], None).sim_state,
+            run_level(4, &[(Qfc, 1, 1), (Vbg, 2, 1), (Delay, 3, 1), (MirrorBack, 8, 1), (Qfc, 1, 4), (Vbg, 2, 4), (MirrorSlash, 8, 4)], None).sim_state,
             SimState::Locked
         );
 
         // L5: The Repeater Node
         assert_eq!(
-            run_level(4, &[(Qfc, 1, 1), (Memory, 5, 1), (Vbg, 8, 1), (MirrorBack, 9, 1), (Qfc, 1, 4), (Vbg, 2, 4), (Delay, 3, 4), (MirrorSlash, 9, 4)], None).sim_state,
+            run_level(5, &[(Qfc, 1, 1), (Memory, 5, 1), (Vbg, 8, 1), (MirrorBack, 9, 1), (Qfc, 1, 4), (Vbg, 2, 4), (Delay, 3, 4), (MirrorSlash, 9, 4)], None).sim_state,
             SimState::Locked
         );
 
         // L6: Cross-Axis Multiplexing (shared VBG at (3,2); Arm A=11 tiles, Arm B=10 tiles -> Delay on Arm B)
         assert_eq!(
-            run_level(5, &[(Qfc, 1, 2), (Qfc, 3, 1), (Vbg, 3, 2), (MirrorBack, 3, 5), (Delay, 7, 5), (MirrorBack, 8, 2)], None).sim_state,
+            run_level(6, &[(Qfc, 1, 2), (Qfc, 3, 1), (Vbg, 3, 2), (MirrorBack, 3, 5), (Delay, 7, 5), (MirrorBack, 8, 2)], None).sim_state,
             SimState::Locked
         );
 
         // L7: Classical Coexistence (Lit Fiber)
         assert_eq!(
-            run_level(6, &[(Qfc, 1, 2), (Vbg, 6, 2), (Vbg, 7, 2)], None).sim_state,
+            run_level(7, &[(Qfc, 1, 2), (Vbg, 6, 2), (Vbg, 7, 2)], None).sim_state,
             SimState::Locked
         );
 
         // L8: Polarization Drift (PMD)
         assert_eq!(
-            run_level(7, &[(Qfc, 1, 1), (Vbg, 2, 1), (Hwp, 6, 1), (Delay, 7, 1), (MirrorBack, 8, 1), (Qfc, 1, 4), (Vbg, 2, 4), (MirrorSlash, 8, 4)], None).sim_state,
+            run_level(8, &[(Qfc, 1, 1), (Vbg, 2, 1), (Hwp, 6, 1), (Delay, 7, 1), (MirrorBack, 8, 1), (Qfc, 1, 4), (Vbg, 2, 4), (MirrorSlash, 8, 4)], None).sim_state,
             SimState::Locked
         );
 
         // L9: Entanglement Distillation
         assert_eq!(
-            run_level(8, &[(Qfc, 1, 1), (Vbg, 2, 1), (Delay, 3, 1), (MirrorBack, 6, 1), (Qfc, 1, 4), (Vbg, 2, 4), (MirrorSlash, 6, 4)], None).sim_state,
+            run_level(9, &[(Qfc, 1, 1), (Vbg, 2, 1), (Delay, 3, 1), (MirrorBack, 6, 1), (Qfc, 1, 4), (Vbg, 2, 4), (MirrorSlash, 6, 4)], None).sim_state,
             SimState::Locked
         );
 
         // L10: Hybrid Quantum Network (780nm + 637nm NV)
         assert_eq!(
-            run_level(9, &[(Qfc, 1, 1), (Vbg, 2, 1), (Delay, 3, 1), (MirrorBack, 9, 1), (Qfc, 1, 4), (Vbg, 2, 4), (Vbg, 3, 4), (MirrorSlash, 9, 4)], None).sim_state,
+            run_level(10, &[(Qfc, 1, 1), (Vbg, 2, 1), (Delay, 3, 1), (MirrorBack, 9, 1), (Qfc, 1, 4), (Vbg, 2, 4), (Vbg, 3, 4), (MirrorSlash, 9, 4)], None).sim_state,
             SimState::Locked
         );
 
         // L11: Satellite Downlink (ATMOS + AO)
         assert_eq!(
-            run_level(10, &[(Qfc, 1, 1), (Vbg, 2, 1), (Ao, 3, 1), (MirrorBack, 7, 1), (MirrorBack, 7, 4)], None).sim_state,
+            run_level(11, &[(Qfc, 1, 1), (Vbg, 2, 1), (Ao, 3, 1), (MirrorBack, 7, 1), (MirrorBack, 7, 4)], None).sim_state,
             SimState::Locked
         );
 
         // L12: BB84 QKD & AES-256 (aborts without HWP, locks with HWP)
-        let l12_fail = run_level(11, &[(Qfc, 1, 2), (Vbg, 2, 2)], Some(123));
+        let l12_fail = run_level(12, &[(Qfc, 1, 2), (Vbg, 2, 2)], Some(123));
         assert_eq!(l12_fail.sim_state, SimState::Fault);
-        let l12_ok = run_level(11, &[(Qfc, 1, 2), (Vbg, 2, 2), (Hwp, 6, 2)], Some(123));
+        let l12_ok = run_level(12, &[(Qfc, 1, 2), (Vbg, 2, 2), (Hwp, 6, 2)], Some(123));
         assert_eq!(l12_ok.sim_state, SimState::Locked);
         assert_eq!(l12_ok.qkd_session.as_ref().unwrap().decrypted_text, l12_ok.qkd_plaintext);
 
         // L13: Entangled QKD (E91)
-        let l13 = run_level(12, &[(Qfc, 3, 2), (Vbg, 2, 2), (Qfc, 5, 2), (Vbg, 6, 2), (Hwp, 8, 2)], Some(456));
+        let l13 = run_level(13, &[(Qfc, 3, 2), (Vbg, 2, 2), (Qfc, 5, 2), (Vbg, 6, 2), (Hwp, 8, 2)], Some(456));
         assert_eq!(l13.sim_state, SimState::Locked);
         assert!(l13.qkd_session.as_ref().unwrap().chsh_s.unwrap() > 2.8);
 
         // L14: Eavesdropper & AES Link (aborts straight through EVE, locks via mirror bypass)
-        let l14_eve = run_level(13, &[(Qfc, 3, 2), (Vbg, 2, 2), (Qfc, 5, 2), (Vbg, 6, 2)], Some(789));
+        let l14_eve = run_level(14, &[(Qfc, 3, 2), (Vbg, 2, 2), (Qfc, 5, 2), (Vbg, 6, 2)], Some(789));
         assert_eq!(l14_eve.sim_state, SimState::Fault);
         assert!(l14_eve.qkd_session.as_ref().unwrap().eve_intercepts > 0);
 
         let l14_ok = run_level(
-            13,
+            14,
             &[(Qfc, 3, 2), (Vbg, 2, 2), (Qfc, 5, 2), (MirrorBack, 6, 2), (Vbg, 6, 3), (MirrorBack, 6, 4), (MirrorSlash, 9, 4)],
             Some(789),
         );
@@ -2383,7 +2388,7 @@ mod tests {
         // L15: Multi-Hop Repeater Chain
         // Without Delay (timing mismatch) -> Fault
         let l15_no_delay = run_level(
-            14,
+            15,
             &[
                 (Qfc, 1, 0), (Vbg, 2, 0), (MirrorBack, 5, 0), (Hwp, 5, 1),
                 (Qfc, 1, 5), (Vbg, 2, 5), (Vbg, 4, 5), (MirrorSlash, 5, 5),
@@ -2395,7 +2400,7 @@ mod tests {
 
         // Without HWP (polarization mismatch at Hop-1 Repeater) -> Fault
         let l15_no_hwp = run_level(
-            14,
+            15,
             &[
                 (Qfc, 1, 0), (Vbg, 2, 0), (MirrorBack, 5, 0),
                 (Qfc, 1, 5), (Vbg, 2, 5), (Vbg, 4, 5), (MirrorSlash, 5, 5), (Delay, 5, 4),
@@ -2408,7 +2413,7 @@ mod tests {
 
         // Without Memory on Hop-2 (80% < 90% QPU threshold) -> Fault
         let l15_no_mem = run_level(
-            14,
+            15,
             &[
                 (Qfc, 1, 0), (Vbg, 2, 0), (MirrorBack, 5, 0), (Hwp, 5, 1),
                 (Qfc, 1, 5), (Vbg, 2, 5), (Vbg, 4, 5), (MirrorSlash, 5, 5), (Delay, 5, 4),
@@ -2420,7 +2425,7 @@ mod tests {
 
         // Full Level 15 Solution -> Hop-1 BSM heralded swap + Hop-2 QPU >=90% Locked!
         let l15_ok = run_level(
-            14,
+            15,
             &[
                 (Qfc, 1, 0), (Vbg, 2, 0), (MirrorBack, 5, 0), (Hwp, 5, 1),
                 (Qfc, 1, 5), (Vbg, 2, 5), (Vbg, 4, 5), (MirrorSlash, 5, 5), (Delay, 5, 4),
@@ -2434,7 +2439,7 @@ mod tests {
         // L16: Satellite E91 QKD (Grand Finale)
         // Going straight through Eve -> Fault (Eve detected, key aborted)
         let l16_eve = run_level(
-            15,
+            16,
             &[
                 (Ao, 3, 1), (Qfc, 2, 1), (MirrorSlash, 1, 1), (Vbg, 1, 4),
                 (Ao, 5, 1), (Qfc, 8, 1), (MirrorBack, 9, 1), (Vbg, 9, 2),
@@ -2446,7 +2451,7 @@ mod tests {
 
         // Bypassing Eve WITHOUT HWP -> Fault (PMD causes QBER ~50%)
         let l16_no_hwp = run_level(
-            15,
+            16,
             &[
                 (Ao, 3, 1), (Qfc, 2, 1), (MirrorSlash, 1, 1), (Vbg, 1, 4),
                 (Ao, 5, 1), (Qfc, 8, 1), (MirrorBack, 9, 1), (MirrorSlash, 9, 2),
@@ -2458,7 +2463,7 @@ mod tests {
 
         // Full Level 16 Solution -> Both AO downlinks + Eve bypass + LitFiber VBG + PMD HWP -> AES-256 Locked!
         let l16_ok = run_level(
-            15,
+            16,
             &[
                 (Ao, 3, 1), (Qfc, 2, 1), (MirrorSlash, 1, 1), (Vbg, 1, 4),
                 (Ao, 5, 1), (Qfc, 8, 1), (MirrorBack, 9, 1), (MirrorSlash, 9, 2),
@@ -2475,27 +2480,27 @@ mod tests {
 
         // L17: Chromatic Dispersion (CD Fiber + DCF)
         // DCF placed BEFORE CD Fiber -> Fault (dispersion not cleared downstream)
-        let l17_early_dcf = run_level(16, &[(Qfc, 1, 2), (Dcf, 2, 2), (Vbg, 7, 2)], None);
+        let l17_early_dcf = run_level(17, &[(Qfc, 1, 2), (Dcf, 2, 2), (Vbg, 7, 2)], None);
         assert_eq!(l17_early_dcf.sim_state, SimState::Fault);
         // VBG placed BEFORE Lit Fiber -> Fault (noise = 15 > 10)
-        let l17_early_vbg = run_level(16, &[(Qfc, 1, 2), (Vbg, 2, 2), (Dcf, 8, 2)], None);
+        let l17_early_vbg = run_level(17, &[(Qfc, 1, 2), (Vbg, 2, 2), (Dcf, 8, 2)], None);
         assert_eq!(l17_early_vbg.sim_state, SimState::Fault);
         // Full Level 17 Solution -> Locked!
-        let l17_ok = run_level(16, &[(Qfc, 1, 2), (Vbg, 7, 2), (Dcf, 8, 2)], None);
+        let l17_ok = run_level(17, &[(Qfc, 1, 2), (Vbg, 7, 2), (Dcf, 8, 2)], None);
         assert_eq!(l17_ok.sim_state, SimState::Locked);
 
         // L18: WDM Wavelength Routing (1550nm passes straight; 637nm reflects \)
         // Converting Arm B to 1550nm BEFORE WDM makes it shoot straight off the bench -> Fault
-        let l18_bad_wdm = run_level(17, &[(Qfc, 1, 2), (Qfc, 3, 1), (Wdm, 3, 2), (Vbg, 5, 2), (Vbg, 6, 2)], None);
+        let l18_bad_wdm = run_level(18, &[(Qfc, 1, 2), (Qfc, 3, 1), (Wdm, 3, 2), (Vbg, 5, 2), (Vbg, 6, 2)], None);
         assert_eq!(l18_bad_wdm.sim_state, SimState::Fault);
         // Full Level 18 Solution -> Locked!
-        let l18_ok = run_level(17, &[(Qfc, 1, 2), (Delay, 3, 1), (Wdm, 3, 2), (Qfc, 4, 2), (Vbg, 5, 2), (Vbg, 6, 2)], None);
+        let l18_ok = run_level(18, &[(Qfc, 1, 2), (Delay, 3, 1), (Wdm, 3, 2), (Qfc, 4, 2), (Vbg, 5, 2), (Vbg, 6, 2)], None);
         assert_eq!(l18_ok.sim_state, SimState::Locked);
 
         // L19: Dispersive Metro Link (CD + Lit + Distill -> QPU >=90%)
         // Missing DCF on Arm B -> Fault at DISTILL
         let l19_no_dcf = run_level(
-            18,
+            19,
             &[
                 (Qfc, 1, 1), (Vbg, 2, 1), (Dcf, 6, 1), (Delay, 7, 1), (MirrorBack, 8, 1),
                 (Qfc, 1, 4), (Vbg, 6, 4), (MirrorSlash, 8, 4),
@@ -2505,7 +2510,7 @@ mod tests {
         assert_eq!(l19_no_dcf.sim_state, SimState::Fault);
         // Full Level 19 Solution -> Locked!
         let l19_ok = run_level(
-            18,
+            19,
             &[
                 (Qfc, 1, 1), (Vbg, 2, 1), (Dcf, 6, 1), (Delay, 7, 1), (MirrorBack, 8, 1),
                 (Qfc, 1, 4), (Vbg, 6, 4), (Dcf, 7, 4), (MirrorSlash, 8, 4),
@@ -2517,7 +2522,7 @@ mod tests {
         // L20: Quantum Teleportation (|Psi> 'x' + EPR + TELE-BSM -> TELEPORT RX)
         // Missing HWP Pauli correction on Bob's PMD arm -> Fault
         let l20_no_hwp = run_level(
-            19,
+            20,
             &[
                 (Qfc, 1, 5), (Vbg, 2, 5), (MirrorSlash, 3, 5),
                 (Qfc, 5, 1), (Vbg, 4, 1), (MirrorSlash, 3, 1),
@@ -2531,7 +2536,7 @@ mod tests {
 
         // Missing Alice's |Psi> arm (no TELE-BSM herald) -> Fault
         let l20_no_herald = run_level(
-            19,
+            20,
             &[
                 (Qfc, 5, 1), (Vbg, 4, 1), (MirrorSlash, 3, 1),
                 (Qfc, 7, 1), (Vbg, 8, 1), (MirrorBack, 9, 1), (MirrorSlash, 9, 4), (Dcf, 8, 4), (Hwp, 7, 4),
@@ -2543,7 +2548,7 @@ mod tests {
 
         // Full Level 20 Solution -> Quantum Teleportation Locked!
         let l20_ok = run_level(
-            19,
+            20,
             &[
                 (Qfc, 1, 5), (Vbg, 2, 5), (MirrorSlash, 3, 5),
                 (Qfc, 5, 1), (Vbg, 4, 1), (MirrorSlash, 3, 1),
@@ -2648,7 +2653,7 @@ mod tests {
     #[test]
     fn qol_undo_redo_and_alignment_laser_tracer() {
         let mut sim = BenchSim::new();
-        sim.load_level(0); // Level 1: 780nm -> Fiber at (4,2) -> SNSPD (9,2)
+        sim.load_level(1); // Level 1: 780nm -> Fiber at (4,2) -> SNSPD (9,2)
 
         // 1. Alignment laser detects 780nm absorption on fiber before QFC is placed
         let beams0 = sim.trace_alignment_beams();
@@ -2676,7 +2681,7 @@ mod tests {
         assert_eq!(sim.inventory.get(&Placeable::Qfc).copied(), Some(0));
 
         // 4. Alignment laser tracks Delay (+100ps) & HWP polarization parity on Level 8
-        sim.load_level(7);
+        sim.load_level(8);
         for &(c, x, y) in &[
             (Placeable::Qfc, 1, 1), (Placeable::MirrorBack, 8, 1),
             (Placeable::Qfc, 1, 4), (Placeable::MirrorSlash, 8, 4),
@@ -2733,7 +2738,7 @@ mod tests {
     fn classroom_frame_debugger_stars_and_lab_report() {
         use Placeable::*;
         let mut sim = BenchSim::new();
-        sim.load_level(0); // Level 1 (Par = 2)
+        sim.load_level(1); // Level 1 (Par = 2)
         sim.selected = Some(Qfc);
         assert!(sim.place_component(2, 2));
         sim.selected = Some(Vbg);
@@ -2759,11 +2764,11 @@ mod tests {
         }
         assert_eq!(sim.sim_state, SimState::Locked);
         assert_eq!(sim.last_earned_stars, Some(3));
-        assert_eq!(sim.level_stars.get(&0).copied(), Some(3));
+        assert_eq!(sim.level_stars.get(&1).copied(), Some(3));
         assert_eq!(sim.total_stars(), 3);
 
         // 2. Solving Level 2 with a hint opened + optimal parts (4) -> 2 Stars
-        sim.load_level(1); // Par = 4
+        sim.load_level(2); // Par = 4
         sim.hint_tier = 1;
         for &(c, x, y) in &[(Qfc, 1, 1), (Vbg, 2, 1), (MirrorBack, 3, 1), (MirrorBack, 3, 4)] {
             sim.selected = Some(c);
@@ -2778,11 +2783,11 @@ mod tests {
         }
         assert_eq!(sim.sim_state, SimState::Locked);
         assert_eq!(sim.last_earned_stars, Some(2));
-        assert_eq!(sim.level_stars.get(&1).copied(), Some(2));
+        assert_eq!(sim.level_stars.get(&2).copied(), Some(2));
         assert_eq!(sim.total_stars(), 5);
 
         // 3. Re-solving Level 1 with a hint preserves the previous 3-Star best score
-        sim.load_level(0);
+        sim.load_level(1);
         sim.hint_tier = 2;
         sim.selected = Some(Qfc);
         assert!(sim.place_component(2, 2));
@@ -2796,12 +2801,13 @@ mod tests {
             }
         }
         assert_eq!(sim.last_earned_stars, Some(2));
-        assert_eq!(sim.level_stars.get(&0).copied(), Some(3));
+        assert_eq!(sim.level_stars.get(&1).copied(), Some(3));
 
-        // 4. Lab Report Markdown includes completion counts, star ratings, and all 20 levels
+        // 4. Lab Report Markdown includes completion counts, star ratings, and all 21 labs (Lab 0 + Levels 1-20)
         let md = sim.build_lab_report_markdown();
-        assert!(md.contains("2 / 20 Levels Completed"));
-        assert!(md.contains("5 / 60 Stars"));
+        assert!(md.contains("2 / 21 Levels Completed"));
+        assert!(md.contains("5 / 63 Stars"));
+        assert!(md.contains("Lab 0: Optical Bench Orientation & Terminology"));
         assert!(md.contains("Level 1: The Wavelength Barrier"));
         assert!(md.contains("Level 20: Quantum Teleportation"));
         assert!(md.contains("*** (3/3 Optimal)"));
@@ -2819,7 +2825,7 @@ mod tests {
     fn touch_erase_mode_and_colorblind_accessibility() {
         use Placeable::*;
         let mut sim = BenchSim::new();
-        sim.load_level(0); // Level 1: fixed fiber at (4,2)
+        sim.load_level(1); // Level 1: fixed fiber at (4,2)
 
         // 1. Place QFC at (2,2), then enable Erase Mode and tap (2,2) to remove & refund inventory
         sim.selected = Some(Qfc);
@@ -2855,7 +2861,7 @@ mod tests {
     #[test]
     fn dynamic_bench_resize_and_edge_expansion() {
         let mut sim = BenchSim::new();
-        sim.load_level(0);
+        sim.load_level(1);
         // 1. Default 10x6 viewport fits exact 10x6 with no spurious expansion
         sim.sync_bench_bounds(10, 6);
         assert_eq!((sim.bench_cols, sim.bench_rows), (10, 6));

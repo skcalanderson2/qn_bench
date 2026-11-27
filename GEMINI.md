@@ -3,7 +3,7 @@
 ## Project Overview
 **QN Bench** is an educational 2D optical-bench puzzle game built in **Rust + `eframe`/`egui`** (targeting **WebAssembly**, **macOS Universal**, and **Windows x64**). It teaches both the conceptual physics and the physical hardware stack of quantum networking — single-photon transduction, Raman noise filtering, quantum memories, Hong-Ou-Mandel (HOM) interference, polarization mode dispersion, chromatic dispersion, dichroic WDM routing, entanglement distillation, multi-hop repeaters, Bennett et al. (1993) Quantum Teleportation, and end-to-end **BB84 / E91 QKD + FIPS-197 AES-256** cryptography.
 
-* **Current Shipped Version:** `v2.10.3` (legacy Python `v1.1.0` preserved on branch `python-v1`)
+* **Current Shipped Version:** `v2.11.0` (legacy Python `v1.1.0` preserved on branch `python-v1`)
 * **Repository:** `https://github.com/skcalanderson2/qn_bench`
 * **Play in Browser (WASM):** `https://skcalanderson2.github.io/qn_bench/play/`
 * **Download Site:** `https://skcalanderson2.github.io/qn_bench/`
@@ -15,7 +15,7 @@
 ## Architecture Map (`src/`)
 * `src/main.rs` — Native (`eframe::run_native`) & WebAssembly (`eframe::WebRunner`) entry points.
 * `src/model.rs` — Core domain enums (`Dir`, `Pol`, `Placeable`, `Tile`, `TargetMode`, `SimState`, `SandboxTool`, `Overlay`), `LevelDef`, `SandboxBlueprint` + pure-Rust base64url `#bp=` share URL codec, palette constants.
-* `src/levels.rs` — All **20 campaign levels**, `level_par_components(idx)` optimal optic par table, and the `HARDWARE_DOCS` encyclopedia (29 hardware specs).
+* `src/levels.rs` — All **21 campaign labs (Lab 0 Orientation + Levels 1–20)**, `level_par_components(idx)` optimal optic par table, and the `HARDWARE_DOCS` encyclopedia (29 hardware specs).
 * `src/glossary.rs` — Complete Quantum Networking Terminology & Abbreviation Encyclopedia (31 quantum physics & QKD/AES terms + category/search helpers complementing `HARDWARE_DOCS`).
 * `src/sim.rs` — Decoupled optical-bench physics engine (`BenchSim`, `Photon`, `Particle`, `Shockwave`), dynamic viewport/edge-expanding grid bounds (`bench_cols` x `bench_rows` up to `64x48`), 64-step Undo/Redo, Live Alignment Laser tracer, auto-firing `+5ps` single-step frame debugger, 1–3 star efficiency ratings, Markdown Lab Report generator, Touch Erase primary-click handler, and 9 comprehensive unit tests covering all 20 levels + NIST FIPS-197 AES-256 vectors.
 * `src/qkd.rs` — BB84 & E91/BBM92 QKD sifting, QBER & CHSH `S` computation, Eve intercept-resend simulation, SHA-256 privacy amplification, and real FIPS-197 AES-256-CTR encryption/decryption.
@@ -64,13 +64,15 @@ Preserve these physical constraints when adding levels or components:
 
 ---
 
-## Implemented Campaign (Levels 1–20) & Sandbox
+## Implemented Campaign (Lab 0 + Levels 1–20) & Sandbox
+* **Orientation (Lab 0):**
+  * Lab 0 Optical Bench Orientation & Terminology (`ION 780nm`, `QFC`, pre-installed `VBG`, `SNSPD`, core quantum terminology primer & Glossary quick-link).
 * **Act I (Levels 1–16):**
   * L1 The Wavelength Barrier (`QFC`, `VBG`, `FIBER`, `SNSPD`) • L2 Cryostat Obstacles (`WALL`, Mirrors) • L3 Long-Haul Attenuation (`MEMORY`) • L4 Entanglement Swapping (`DELAY`, `BSM`) • L5 The Repeater Node (`MEMORY` + `DELAY`) • L6 Cross-Axis Multiplexing (shared `VBG`) • L7 Classical Coexistence (`LIT_FIBER`) • L8 Polarization Drift (`PMD_FIBER`, `HWP`) • L9 Entanglement Distillation (`DISTILL`, `QPU >=90%`) • L10 Hybrid Quantum Network (`780nm` Ion + `637nm` NV) • L11 Satellite Downlink (`ATMOS`, `AO`) • L12 BB84 QKD & AES-256 • L13 Entangled QKD (E91, `EPR`, `CHSH S > 2`) • L14 Eavesdropper & AES Link (`EVE` bypass) • L15 Multi-Hop Repeater Chain (`REPEATER`) • L16 Satellite E91 QKD (Act I Grand Finale).
 * **Act II (Levels 17–20):**
   * L17 Chromatic Dispersion (`CD_FIBER`, `DCF`) • L18 WDM Wavelength Routing (`WDM (\)`) • L19 Dispersive Metro Link (`CD_FIBER` + `LIT_FIBER` + `DISTILL` -> `QPU`) • L20 Quantum Teleportation (`|Psi> 'x'` + `EPR` + `TELE-BSM` + `DCF` + `HWP` -> `TELEPORT RX`).
 * **Free-Build Sandbox (`S`):** Unlimited optics/channels/rotatable emitters/EPR/detectors, starter labs, campaign cloning, JSON import/export, and playable `#bp=<base64url>` share links.
-* **YouTube Lab Video Guides:** All **20/20** generated 1080p `.mp4` + `.srt` guides uploaded to YouTube and active in `docs/videos.json` (verified unique & valid in `cargo test`).
+* **YouTube Lab Video Guides:** All **21/21** generated 1080p `.mp4` + `.srt` guides (Lab 0 + Levels 1–20) uploaded to YouTube and active in `docs/videos.json` (verified unique & valid in `cargo test`).
 
 ---
 

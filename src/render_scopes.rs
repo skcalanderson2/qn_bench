@@ -190,9 +190,9 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim, has_video: bool) -> 
 
     ui.add_space(3.0);
 
-    // Row 2: Level pills 1..20 + SANDBOX (left) and UNDO / REDO / ALIGN / HINT (right)
-    let narrow = ui.available_width() < 640.0;
-    let pill_w = if narrow { 13.0 } else { 16.5 };
+    // Row 2: Level pills 0..20 + SANDBOX (left) and UNDO / REDO / ALIGN / HINT / VIDEO (right)
+    let narrow = ui.available_width() < 680.0;
+    let pill_w = if narrow { 12.5 } else { 15.5 };
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         for i in 0..total_levels {
@@ -220,7 +220,7 @@ pub fn draw_telemetry_deck(ui: &mut Ui, sim: &mut BenchSim, has_video: bool) -> 
             } else {
                 TEXT_MUTED
             };
-            let btn = egui::Button::new(egui::RichText::new(format!("{}", i + 1)).strong().size(if narrow { 8.5 } else { 9.5 }).color(fg))
+            let btn = egui::Button::new(egui::RichText::new(format!("{i}")).strong().size(if narrow { 8.5 } else { 9.5 }).color(fg))
                 .fill(bg)
                 .stroke(Stroke::new(1.0_f32, bd))
                 .corner_radius(CornerRadius::same(4))

@@ -30,6 +30,8 @@ struct PersistedState {
     #[serde(default)]
     level_stars: std::collections::BTreeMap<usize, u8>,
     #[serde(default)]
+    has_lab_zero_indexing: bool,
+    #[serde(default)]
     muted: bool,
     #[serde(default)]
     sandbox_bp: Option<SandboxBlueprint>,
@@ -44,6 +46,7 @@ impl Default for PersistedState {
         Self {
             completed_levels: Vec::new(),
             level_stars: std::collections::BTreeMap::new(),
+            has_lab_zero_indexing: true,
             muted: false,
             sandbox_bp: None,
             align_laser: true,
@@ -81,13 +84,17 @@ impl QnBenchApp {
             .unwrap_or_default();
 
         let mut sim = BenchSim::new();
-        for idx in saved.completed_levels {
+        // Migrate pre-Lab-0 saves (where 0..19 represented Levels 1..20) cleanly to 1..=20
+        let idx_shift = if saved.has_lab_zero_indexing { 0 } else { 1 };
+        for raw_idx in saved.completed_levels {
+            let idx = raw_idx + idx_shift;
             if idx < sim.levels.len() {
                 sim.completed_levels.insert(idx);
                 sim.level_stars.entry(idx).or_insert(1);
             }
         }
-        for (idx, stars) in saved.level_stars {
+        for (raw_idx, stars) in saved.level_stars {
+            let idx = raw_idx + idx_shift;
             if idx < sim.levels.len() && stars > 0 {
                 sim.completed_levels.insert(idx);
                 sim.level_stars.insert(idx, stars.min(3));
@@ -224,6 +231,11 @@ impl QnBenchApp {
                     }
                 } else if matches!(self.overlay, Overlay::Level(_) | Overlay::Comp(_)) {
                     if let Overlay::Level(idx) = self.overlay {
+                        if ctx.input(|i| !i.modifiers.command && !i.modifiers.ctrl && i.key_pressed(Key::T)) {
+                            self.overlay = Overlay::Glossary;
+                            self.sfx.play(SfxEvent::Select);
+                            return;
+                        }
                         if ctx.input(|i| i.key_pressed(Key::V)) {
                             if let Some(vid) = self.videos.id_for_level(idx) {
                                 open_lab_video(self.sim.levels[idx].title, vid);
@@ -248,16 +260,13 @@ impl QnBenchApp {
         let (fire, reset, pause, step_dot, ui_help_f1, glossary_t, help, hint_i, video_v, align_l, report_g, erase_x, a11y_c, undo_k, redo_k, enter_next, qkd_k, update_u, mute, sandbox_s, rot_ccw, rot_cw, prev_l, next_l, num_jump) = ctx.input(|i| {
             let mut jump = None;
             let num_keys = [
-                Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
-                Key::Num6, Key::Num7, Key::Num8, Key::Num9,
+                Key::Num0, Key::Num1, Key::Num2, Key::Num3, Key::Num4,
+                Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9,
             ];
             for (idx, k) in num_keys.iter().enumerate() {
                 if i.key_pressed(*k) {
                     jump = Some(idx);
                 }
-            }
-            if i.key_pressed(Key::Num0) {
-                jump = Some(9);
             }
             if i.key_pressed(Key::Minus) {
                 jump = Some(10);
@@ -405,6 +414,7 @@ impl eframe::App for QnBenchApp {
         let state = PersistedState {
             completed_levels: completed,
             level_stars: self.sim.level_stars.clone(),
+            has_lab_zero_indexing: true,
             muted: self.sfx.muted,
             sandbox_bp: Some(self.sim.sandbox_bp.clone()),
             align_laser: self.sim.align_laser,

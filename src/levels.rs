@@ -23,9 +23,10 @@ pub fn hardware_doc(key: &str) -> Option<&'static HardwareDoc> {
     HARDWARE_DOCS.iter().find(|d| d.key == key)
 }
 
-/// Optimal (par) user-placed component count for each campaign level (0-indexed).
+/// Optimal (par) user-placed component count for each campaign lab (0 = Lab 0, 1..=20 = Levels 1–20).
 pub fn level_par_components(idx: usize) -> usize {
-    const PAR: [usize; 20] = [
+    const PAR: [usize; 21] = [
+        1,  // Lab 0: QFC (VBG pre-installed)
         2,  // L1: QFC, VBG
         4,  // L2: QFC, VBG, 2x MirrorBack
         3,  // L3: QFC, Memory, VBG
@@ -288,12 +289,29 @@ pub const HARDWARE_DOCS: &[HardwareDoc] = &[
 pub fn build_levels() -> Vec<LevelDef> {
     vec![
         LevelDef {
+            title: "Lab 0: Optical Bench Orientation & Terminology",
+            goal: "Intro Lab: Place PPLN QFC before the pre-installed VBG Filter, check GLOSSARY [T], and press SPACE or STEP [.].",
+            briefing: "Welcome to QN Bench! Real quantum networks connect matter qubits (like a 780nm Trapped-Ion emitter) to cryogenic single-photon detectors (SNSPD 1.5K) using 1550nm Telecom C-Band photons. Before tackling telecom fiber in Level 1, explore the bench and core terms: click '?' on any component card or Shift+Click any tile for specs, open GLOSSARY [T] for all acronyms, or press STEP [.] to trace a photon +5ps per click. A VBG Filter is already pre-installed at (6,2) — place your PPLN QFC upstream of it to convert 780nm -> 1550nm cleanly!",
+            hint_1: "SNSPD 1.5K only locks on 1550nm photons with Raman noise <= 10. Place PPLN QFC BEFORE the pre-installed VBG Filter at (6,2) so the filter strips the converter's +40 Raman pump noise.",
+            hint_2: "Select PPLN QFC in the right sidebar, Left-Click any empty tile on row 2 between (1,2) and (5,2) — e.g., (3,2) — watch the Alignment Laser turn cyan (1550nm), then press SPACE!",
+            new_hardware: &["ION", "QFC", "VBG", "SNSPD"],
+            mode: TargetMode::Single,
+            qkd_rounds: 0,
+            epr_source: None,
+            emitters: vec![em(0, 2, Dir::Right)],
+            target: (9, 2),
+            e91_targets: None,
+            fixed: vec![((6, 2), Tile::Placeable(Placeable::Vbg))],
+            walls: vec![],
+            inventory: inv(&[(Placeable::Qfc, 1)]),
+        },
+        LevelDef {
             title: "Level 1: The Wavelength Barrier",
             goal: "Convert 780nm to 1550nm before fiber, and filter Raman noise before SNSPD.",
             briefing: "Trapped-ion qubits emit visible 780nm photons, which are instantly absorbed by silica telecom fiber. Use a PPLN Frequency Converter (QFC) to shift the photon into the 1550nm C-band, then strip the converter's Raman pump noise with a VBG Filter before it hits the cryogenic SNSPD detector.",
             hint_1: "Telecom fiber destroys 780nm photons immediately, so QFC must sit BEFORE the fiber span. VBG removes the +40 Raman noise added by QFC.",
             hint_2: "Place PPLN QFC on row 2 before tile (4,2) — e.g., at (2,2) — and place VBG Filter after it at (3,2) or (7,2).",
-            new_hardware: &["QFC", "VBG", "FIBER", "SNSPD"],
+            new_hardware: &["FIBER", "QFC", "VBG"],
             mode: TargetMode::Single,
             qkd_rounds: 0,
             epr_source: None,

@@ -107,8 +107,52 @@ class LabScript:
 
 
 def build_lab_scripts() -> List[LabScript]:
-    """Conceptual Lab Guide definitions for all 20 QN Bench campaign levels."""
+    """Conceptual Lab Guide definitions for QN Bench Lab 0 (Orientation) + Campaign Levels 1–20."""
     return [
+        LabScript(
+            num=0,
+            slug="optical_bench_orientation",
+            title="Optical Bench Orientation & Terminology",
+            subtitle="Photonic Qubits, Core Acronyms & Bench Controls",
+            concept_tag="LAB 0 INTRO • QUBITS • 1550nm C-BAND • BENCH CONTROLS",
+            emitters=[(0, 2, "R", 780)],
+            target=(9, 2, "SNSPD 1.5K"),
+            fixed=[(6, 2, "VBG")],
+            fail_stop=(9, 2),
+            fail_banner="SNSPD REJECTED 780nm — REQUIRES 1550nm C-BAND!",
+            fail_color=RED,
+            cards=[
+                HardwareCard("QUBIT / nm", "Photonic Qubit & Wavelength", RED,
+                             "780nm Visible Ion  ->  1550nm Telecom C-Band",
+                             "Single photons carry quantum states. Matter qubits emit visible light, while telecom networks operate at 1550nm."),
+                HardwareCard("PPLN QFC", "Quantum Frequency Converter", PURPLE,
+                             "Shifts 780nm -> 1550nm  (+40 Raman Noise)",
+                             "Nonlinear crystal waveguide converting visible photons into telecom photons; its pump laser adds Raman noise."),
+                HardwareCard("VBG & SNSPD", "Filter (-50) & Cryo Detector (1.5K)", CYAN,
+                             "Lock Criteria: 1550nm | Noise <= 10 | Fid >= 60%",
+                             "Volume Bragg Grating strips Raman noise so the 1.5-Kelvin superconducting nanowire detector can lock cleanly."),
+            ],
+            pipeline=[
+                PipelineStage("ION 780nm", "Visible Qubit", RED, wl_after=780),
+                PipelineStage("PPLN QFC", "Place Upstream", PURPLE, wl_after=1550, noisy_after=True),
+                PipelineStage("VBG FILTER", "Pre-Installed (-50)", CYAN, wl_after=1550, noisy_after=False),
+                PipelineStage("ALIGN / STEP", "Preview & +5ps", AMBER, wl_after=1550, noisy_after=False),
+                PipelineStage("SNSPD 1.5K", "LOCKED 100%", GREEN, wl_after=1550, noisy_after=False),
+            ],
+            strategy_bullets=[
+                "Decode the core terms first: Photonic Qubit, Wavelength (780nm vs 1550nm), Fidelity, Raman Noise, and Picosecond (ps) timing.",
+                "Click the cyan '?' badge on any card, Shift+Click any tile, or press T anytime to search the 60-entry Terminology Glossary.",
+                "Place PPLN QFC upstream of the pre-installed VBG Filter so the filter removes pump noise before SNSPD 1.5K.",
+                "Watch the Alignment Laser turn cyan (1550nm), then press SPACE to fire or '.' (STEP) to trace the photon +5ps per click.",
+            ],
+            narration=[
+                "Welcome to QN Bench, Lab Zero: Optical Bench Orientation and Terminology. Before diving into long-haul fiber and quantum cryptography, this quick intro decodes the core quantum networking terms and shows you how to operate the optical bench.",
+                "On the bench, every moving pulse is a photonic qubit — a single particle of light carrying quantum information. Our trapped-ion emitter on the left fires visible 780 nanometer red photons, while the cryogenic SNSPD detector on the right only detects clean 1550 nanometer telecom C-band light. Fire straight across, and the detector rejects the 780 nanometer pulse.",
+                "Three core acronyms power this first link. Q F C stands for PPLN Quantum Frequency Converter — a nonlinear crystal that shifts 780 nanometers into 1550 nanometers, though its bright pump laser adds plus 40 Raman scattering noise. V B G is a Volume Bragg Grating filter that strips minus 50 noise. And S N S P D is a Superconducting Nanowire Single-Photon Detector cooled to 1.5 Kelvin, requiring 1550 nanometers, noise at or below 10, and fidelity at least 60 percent.",
+                "In Lab Zero, a VBG Filter is already mounted on the bench for you. Place your single PPLN QFC anywhere upstream of that filter so the beam turns cyan in the Live Alignment Laser and gets cleaned before reaching the detector. You can also click the question-mark badge on any component, press T to search the full 60-entry Terminology Glossary, press F1 for UI Help, or click STEP to watch the photon advance 5 picoseconds at a time.",
+                "Place your frequency converter upstream of the filter, verify the cyan 1550 nanometer lock on the bottom oscilloscopes, and press Space to complete Lab Zero and launch into Level One!"
+            ],
+        ),
         LabScript(
             num=1,
             slug="the_wavelength_barrier",
@@ -1197,6 +1241,11 @@ def draw_mini_tile(d: ImageDraw.ImageDraw, x0: int, y0: int, ts: int, kind: str,
         d.line((x0, cy + 4, x0 + ts, cy + 14), fill=ICE, width=3)
         d.line((x0, cy, x0 + ts, cy), fill=AMBER, width=2)
         draw_centered_tag("CD FIBER", ICE)
+    elif kind == "VBG":
+        d.rounded_rectangle(r, radius=10, fill=(18, 36, 48), outline=CYAN, width=3)
+        for gx_off in range(-22, 24, 10):
+            d.line((cx + gx_off, y0 + 20, cx + gx_off - 6, y0 + ts - 34), fill=CYAN, width=3)
+        draw_centered_tag("VBG -50", CYAN)
     elif kind == "ATMOS":
         d.rounded_rectangle(r, radius=10, fill=(16, 38, 46), outline=TEAL, width=2)
         for ro in (-18, 0, 18):
@@ -1672,12 +1721,12 @@ def parse_level_range(spec: str) -> List[int]:
             out.extend(range(int(a), int(b) + 1))
         elif part:
             out.append(int(part))
-    return sorted(set(x for x in out if 1 <= x <= 20))
+    return sorted(set(x for x in out if 0 <= x <= 20))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate QN Bench 1080p YouTube Lab Guide videos.")
-    parser.add_argument("--levels", default="1", help="Levels to generate, e.g. '1', '1,2,3', or '1-20'")
+    parser.add_argument("--levels", default="0", help="Levels to generate, e.g. '0', '1,2,3', or '0-20'")
     parser.add_argument("--voice", default="en-US-AndrewNeural", help="Microsoft Edge Neural TTS voice")
     parser.add_argument("--rate", default="+0%", help="Speech rate adjustment, e.g. '-5%' or '+5%'")
     parser.add_argument("--out", default="videos", help="Output directory (gitignored)")
@@ -1686,7 +1735,7 @@ def main() -> int:
 
     wanted = parse_level_range(args.levels)
     if not wanted:
-        print("No valid levels specified (1-20).", file=sys.stderr)
+        print("No valid levels specified (0-20).", file=sys.stderr)
         return 1
 
     all_labs = build_lab_scripts()

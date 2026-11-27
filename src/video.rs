@@ -56,9 +56,7 @@ fn parse_manifest_levels(json: &str) -> BTreeMap<usize, String> {
     };
     for (k, v) in raw.levels {
         if let (Ok(num), Some(yt_id)) = (k.trim().parse::<usize>(), extract_youtube_id(&v)) {
-            if num >= 1 {
-                out.insert(num - 1, yt_id);
-            }
+            out.insert(num, yt_id);
         }
     }
     out
@@ -328,17 +326,18 @@ mod tests {
         assert_eq!(extract_youtube_id("not-a-valid-id"), None);
 
         let parsed = parse_manifest_levels(
-            r#"{"levels": {"1": "https://youtu.be/dQw4w9WgXcQ", "20": "AbCdEf123_-", "2": ""}}"#,
+            r#"{"levels": {"0": "0123456789a", "1": "https://youtu.be/dQw4w9WgXcQ", "20": "AbCdEf123_-", "2": ""}}"#,
         );
-        assert_eq!(parsed.get(&0).map(String::as_str), Some("dQw4w9WgXcQ"));
-        assert_eq!(parsed.get(&19).map(String::as_str), Some("AbCdEf123_-"));
-        assert!(!parsed.contains_key(&1));
+        assert_eq!(parsed.get(&0).map(String::as_str), Some("0123456789a"));
+        assert_eq!(parsed.get(&1).map(String::as_str), Some("dQw4w9WgXcQ"));
+        assert_eq!(parsed.get(&20).map(String::as_str), Some("AbCdEf123_-"));
+        assert!(!parsed.contains_key(&2));
 
-        // Verify the real embedded docs/videos.json parses cleanly and all 20 levels have unique valid IDs
+        // Verify the real embedded docs/videos.json parses cleanly and all 21 labs (Lab 0 + Levels 1..=20) have unique valid IDs
         let raw: RawVideoManifest =
             serde_json::from_str(EMBEDDED_VIDEOS_JSON).expect("valid docs/videos.json");
         let live = parse_manifest_levels(EMBEDDED_VIDEOS_JSON);
-        assert_eq!(live.len(), 20, "All 20 campaign levels should have YouTube video guides");
+        assert_eq!(live.len(), 21, "All 21 campaign labs (0..=20) should have YouTube video guides");
         let mut seen_ids = std::collections::HashSet::new();
         for (k, v) in &raw.levels {
             let id = extract_youtube_id(v)
@@ -348,8 +347,8 @@ mod tests {
                 "Duplicate YouTube video ID {id} found at level {k}"
             );
         }
-        for idx in 0..20 {
-            assert!(live.contains_key(&idx), "Missing video guide for Level {}", idx + 1);
+        for idx in 0..=20 {
+            assert!(live.contains_key(&idx), "Missing video guide for Lab/Level {idx}");
         }
     }
 }
